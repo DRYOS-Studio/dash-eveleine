@@ -15,6 +15,16 @@ const COL = {
   submittedAt: "submitted_at",
 } as const;
 
+// Formulários recriados no Yay ganham `form_id` novo e ficam fora da `forms_names`,
+// aparecendo como ID cru e quebrando o histórico do funil em duas barras. Aqui o
+// form_id novo é apontado pro nome canônico do funil, somando as duas versões.
+// Só cobre casos confirmados por comparação das perguntas — o certo é cadastrar o
+// nome na `forms_names`, mas não temos escrita nesse banco.
+const FORM_ALIAS: Record<string, string> = {
+  // 44 leads desde 09/07/2026; 12 das 13 perguntas idênticas ao form abaixo
+  "6a4e3e9826348f5cde09d3eb": "Aplicação Direta | Instagram",
+};
+
 const TZ_OFFSET_HOURS = 3; // America/Sao_Paulo = UTC-3 (sem DST)
 const PAGE = 1000; // PostgREST corta em 1000 linhas/request → paginar
 
@@ -83,7 +93,9 @@ export async function getLeads(range: RangeKey): Promise<LeadsSummary> {
   const byFormMap = new Map<string, number>();
   const byOriginMap = new Map<string, number>();
   for (const r of rows) {
-    const form = (r.form_name || r.form_id || "(sem nome)").trim();
+    const form =
+      FORM_ALIAS[r.form_id ?? ""] ??
+      (r.form_name || r.form_id || "(sem nome)").trim();
     byFormMap.set(form, (byFormMap.get(form) ?? 0) + 1);
     const src = (r.utm_source || "").trim() || "(sem origem)";
     byOriginMap.set(src, (byOriginMap.get(src) ?? 0) + 1);
