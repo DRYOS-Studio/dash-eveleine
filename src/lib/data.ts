@@ -23,6 +23,11 @@ const COL = {
 const FORM_ALIAS: Record<string, string> = {
   // 44 leads desde 09/07/2026; 12 das 13 perguntas idênticas ao form abaixo
   "6a4e3e9826348f5cde09d3eb": "Aplicação Direta | Instagram",
+  // 7 leads desde 07/07/2026; form curto (nome + WhatsApp + Calendly) vindo de
+  // e-mail marketing (leadlovers). Nome confirmado pelo Rafael em 2026-07-30 —
+  // é o `Versalhes | Reativação` recriado; a entrada original na `forms_names`
+  // (69d5367171355988120bc208) nunca recebeu lead.
+  "6a456089bc6c8b26eb0b5a56": "Versalhes | Reativação",
 };
 
 const TZ_OFFSET_HOURS = 3; // America/Sao_Paulo = UTC-3 (sem DST)
