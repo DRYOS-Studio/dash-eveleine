@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* Design system Altis (Cortex) — tema claro, quente, editorial */
+@theme {
+  --color-bg: #f6f5ef; /* surface-page  hsl(48 17% 95%) */
+  --color-surface: #ffffff; /* card */
+  --color-surface-2: #ece8e0; /* subtle       hsl(44 14% 90%) */
+  --color-border: #e6e2db; /* border       hsl(40 8% 88%) */
+  --color-muted: #5f5a53; /* text-secondary hsl(43 5% 35%) */
+  --color-text: #1c1a17; /* text-primary hsl(48 8% 10%) */
+  --color-accent: #ae5630; /* action-primary (terracota) */
+  --color-accent-hover: #944521; /* action-primary-hover */
+  --color-accent-2: #3a7e93; /* teal (links) */
+  --color-positive: #12a277; /* status-success */
+  --color-negative: #dc3b3f; /* status-error */
+
+  --font-sans:
+    var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading:
+    var(--font-heading-face), ui-serif, Georgia, Cambria, serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
