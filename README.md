@@ -1,15 +1,35 @@
 # Captação Versalhes — dashboard enxuta
 
-Dashboard Next.js **mínima**: mostra apenas os **leads inscritos em formulários** e as
-**origens** deles (`utm_source`), com filtro de período. Versão reduzida do
-[Funis do Altis](https://github.com/rafaelemeth/funis-do-altis) — só leitura, 2 quebras e auth.
+Dashboard Next.js **mínima** do funil de inscrição: quantos iniciaram, terminaram e
+agendaram call, com quebra por formulário, geografia e UTM, e filtro de período.
+Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-altis) —
+só leitura e auth por senha única.
 
 ## Stack
 
 - Next.js 15 (App Router) + React 19 · Tailwind CSS v4
 - Supabase (`@supabase/supabase-js`) — acesso **só no servidor** (`service_role`)
 - Auth por senha única (cookie de sessão assinado por HMAC)
-- Sem gráficos client-side: as quebras são barras CSS renderizadas no servidor (SSR)
+- Sem JS de cliente: gráficos são SVG montado no servidor, com `<title>` por marca e
+  tabela-gêmea em `<details>` — nenhum valor fica só no hover
+
+## Identidade
+
+O app roda no design system **Altis (Cortex)**, variante escura — terracota
+`#d98153` como accent, Libre Caslon nos títulos, Inter no corpo. Os estágios do funil
+usam um ramp ordinal de terracota (`#f0b48c` → `#d07f50` → `#a05531`) validado contra a
+superfície escura: contraste, ΔL entre degraus e hue única.
+
+A marca do cliente é o brasão **VM** em folha de ouro (`public/versalhes-crest.png`,
+recortado do lockup original — o wordmark "VERSALHES MENTORIA" fica ilegível na altura do
+header). Paleta de ouro medida do arquivo, para referência: claro `#e8d360`, médio
+`#c08f28`, profundo `#96601a` — passa nos mesmos gates como ramp ordinal, caso um dia se
+queira unificar marca e dados.
+
+**Ouro é da marca; terracota é dos dados.** A separação é intencional: a logo identifica,
+o gráfico mede. Cor de marca reutilizada como série vira categoria aos olhos de quem lê.
+O original vetorial (`.eps`) está no Drive do cliente — se precisar de logo nítida em
+tamanho grande, exportar SVG de lá, porque `.eps` não é conversível aqui.
 
 ## Banco de dados
 

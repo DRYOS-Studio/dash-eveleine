@@ -13,7 +13,16 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen">
       <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6">
-        <span className="text-sm font-medium tracking-tight">
+        <span className="flex items-center gap-2.5 text-sm font-medium tracking-tight">
+          {/* fonte de 96px renderizada a 32 = 3x exato em retina; alt vazio
+              porque o nome ao lado já identifica a marca */}
+          <img
+            src="/versalhes-crest.png"
+            alt=""
+            width={21}
+            height={32}
+            className="h-8 w-auto"
+          />
           Captação <span className="text-[var(--color-muted)]">Versalhes</span>
         </span>
         <form action="/api/logout" method="POST">

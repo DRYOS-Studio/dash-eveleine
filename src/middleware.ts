@@ -27,5 +27,10 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Arquivos de `public/` são servidos na raiz e caíam no gate: sem cookie, a
+  // logo da tela de login voltava 307 pro próprio /login e aparecia quebrada.
+  // Só assets estáticos ficam de fora — nenhum dado de lead vive em public/.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpe?g|svg|webp|avif|ico|woff2?)$).*)",
+  ],
 };

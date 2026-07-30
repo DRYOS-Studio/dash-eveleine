@@ -11,7 +11,14 @@ export default async function LoginPage({
         method="POST"
         className="w-full max-w-sm rounded-2xl border bg-[var(--color-surface)] p-8 shadow-xl"
       >
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <img
+            src="/versalhes-crest-lg.png"
+            alt=""
+            width={36}
+            height={56}
+            className="mb-3 h-14 w-auto"
+          />
           <h1 className="text-xl font-semibold">Captação Versalhes</h1>
           <p className="text-sm text-[var(--color-muted)] mt-1">
             Acesso restrito. Informe a senha.
