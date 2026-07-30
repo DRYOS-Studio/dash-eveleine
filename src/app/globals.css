@@ -1,27 +1,39 @@
 @import "tailwindcss";
 
-/* Design system Altis (Cortex) — tema claro, quente, editorial */
+/* Design system Altis (Cortex) — variante escura.
+   Não é inversão do tema claro: o ramp de terracota foi re-degrauzado para o
+   fundo escuro e validado contra ele (contraste vs superfície, monotonia de
+   luminosidade, hue única). Se um dia precisar do tema claro de volta, os
+   valores originais estão no histórico do git (commit 33b06b5). */
 @theme {
-  --color-bg: #f6f5ef; /* surface-page  hsl(48 17% 95%) */
-  --color-surface: #ffffff; /* card */
-  --color-surface-2: #ece8e0; /* subtle       hsl(44 14% 90%) */
-  --color-border: #e6e2db; /* border       hsl(40 8% 88%) */
-  --color-muted: #5f5a53; /* text-secondary hsl(43 5% 35%) */
-  --color-text: #1c1a17; /* text-primary hsl(48 8% 10%) */
-  --color-accent: #ae5630; /* action-primary (terracota) */
-  --color-accent-hover: #944521; /* action-primary-hover */
-  --color-accent-2: #3a7e93; /* teal (links) */
-  --color-positive: #12a277; /* status-success */
-  --color-negative: #dc3b3f; /* status-error */
+  --color-bg: #141210; /* superfície da página */
+  --color-surface: #1f1b16; /* card */
+  --color-surface-2: #2c261f; /* trilho de barra / grid */
+  --color-border: #332c24;
+  --color-muted: #a89e90; /* texto secundário */
+  --color-muted-2: #837a6d; /* eixos, rótulos fracos */
+  --color-text: #f4f1ea;
+  --color-accent: #d98153; /* terracota, sobre fundo escuro */
+  --color-accent-hover: #e0906a;
+  --color-positive: #2bbf90; /* delta bom */
+  --color-negative: #ef6b63; /* delta ruim */
+
+  /* Ramp ordinal do funil — claro→escuro = pior→melhor estágio.
+     Validado (--ordinal, superfície #1f1b16): ΔL ok, hue spread 10°,
+     degrau mais escuro a 3,13:1 da superfície. */
+  --color-stage-1: #f0b48c; /* abandonou */
+  --color-stage-2: #d07f50; /* terminou, não agendou */
+  --color-stage-3: #a05531; /* agendou */
 
   --font-sans:
     var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading:
     var(--font-heading-face), ui-serif, Georgia, Cambria, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 html {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
@@ -32,9 +44,11 @@ body {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   font-family: var(--font-heading);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
 }
 
 * {
@@ -42,5 +56,16 @@ h2 {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* datas nativas legíveis no escuro */
+input[type="date"] {
+  color-scheme: dark;
 }

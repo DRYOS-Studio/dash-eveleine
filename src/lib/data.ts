@@ -11,7 +11,7 @@ const COL = {
   formId: "form_id", // parte 1 da chave de ordenação estável
   id: "id", // sequência POR tabela — não é único no union
   formName: "form_name",
-  source: "utm_source",
+  status: "status", // partial | complete | scheduled → o funil
   submittedAt: "submitted_at",
 } as const;
 
@@ -38,15 +38,43 @@ const TOP = 10; // barras por quebra; o resto vira uma linha "(outros)"
 export type RangeKey = "hoje" | "ontem" | "7" | "30" | "90" | "all";
 export const RANGE_KEYS: RangeKey[] = ["hoje", "ontem", "7", "30", "90", "all"];
 
-export type Count = { label: string; count: number };
+/**
+ * Estágios do funil, da coluna `status` da view. São mutuamente exclusivos:
+ * `partial` começou e não terminou; `complete` terminou e não agendou;
+ * `scheduled` terminou e agendou. Contar linhas sem separar isso soma abandono
+ * como inscrito — 35% do total histórico.
+ */
+type Status = "partial" | "complete" | "scheduled";
+
+/** Uma linha de quebra: volume + quantos daquele grupo agendaram. */
+export type Count = { label: string; leads: number; agendou: number };
 /** Quebra já cortada no top N: `rows` inclui a linha "(outros)" quando `capped`. */
 export type Breakdown = { rows: Count[]; distinct: number; capped: boolean };
 
-export const UTM_DIMS = ["source", "medium", "campaign", "content", "term"] as const;
+export const UTM_DIMS = ["source", "content", "medium", "campaign", "term"] as const;
 export type UtmDim = (typeof UTM_DIMS)[number];
 
+export type Funnel = {
+  iniciaram: number;
+  terminaram: number; // complete + scheduled
+  agendaram: number;
+  abandonaram: number;
+};
+
+/** Um dia da série, já no fuso de São Paulo. */
+export type Day = {
+  date: string; // YYYY-MM-DD
+  leads: number;
+  abandonou: number;
+  terminou: number;
+  agendou: number;
+};
+
 export type LeadsSummary = {
-  total: number;
+  funnel: Funnel;
+  /** Mesmo funil na janela anterior de igual duração; null em `all`. */
+  anterior: Funnel | null;
+  daily: Day[];
   byForm: Breakdown;
   byUtm: Record<UtmDim, Breakdown>;
   from: string | null;
@@ -57,6 +85,8 @@ type Row = {
   form_id: string | null;
   id: number;
   form_name: string | null;
+  status: string | null;
+  submitted_at: string;
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
@@ -142,72 +172,141 @@ export function resolvePeriod(params: {
   };
 }
 
-/** Lê os leads da janela e agrega total + quebras por formulário e por UTM. */
-export async function getLeads(period: Period): Promise<LeadsSummary> {
-  const { from, to } = period;
-  const cols = [
-    COL.formId,
-    COL.id,
-    COL.formName,
-    ...UTM_DIMS.map((d) => `utm_${d}`),
-  ].join(", ");
+const DIA_MS = 86_400_000;
 
-  const query = (a: number, b: number) => {
-    let q = supabaseAdmin.from(SOURCE).select(cols);
+/**
+ * Janela anterior de igual duração em dias de calendário, terminando onde a
+ * atual começa. Em `all` não existe "anterior" — devolve null e a tela omite
+ * os deltas em vez de comparar com zero.
+ */
+export function periodoAnterior(p: Period): { from: string; to: string } | null {
+  if (!p.fromDate || !p.toDate) return null;
+  const ini = Date.parse(p.fromDate + "T00:00:00Z");
+  const fim = Date.parse(p.toDate + "T00:00:00Z");
+  const dias = Math.round((fim - ini) / DIA_MS) + 1;
+  const d = (t: number) => new Date(t).toISOString().slice(0, 10).split("-").map(Number);
+  const [ay, am, ad] = d(ini - dias * DIA_MS);
+  return { from: spMidnight(ay, am - 1, ad), to: p.from! };
+}
+
+const COLS = [
+  COL.formId,
+  COL.id,
+  COL.formName,
+  COL.status,
+  COL.submittedAt,
+  ...UTM_DIMS.map((d) => `utm_${d}`),
+].join(", ");
+
+/** Puxa todas as linhas de uma janela, paginando o corte de 1000 do PostgREST. */
+async function fetchRows(from: string | null, to: string | null): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let page = 0; ; page++) {
+    let q = supabaseAdmin.from(SOURCE).select(COLS);
     if (to) q = q.lt(COL.submittedAt, to); // limite superior exclusivo
     if (from) q = q.gte(COL.submittedAt, from);
     // ordenação estável (form_id, id): `id` sozinho não é único no union das
     // tabelas (cada `yay_<form_id>` tem sua própria sequência); o par é.
-    return q
+    const { data, error } = await q
       .order(COL.formId, { ascending: true })
       .order(COL.id, { ascending: true })
-      .range(a, b);
-  };
-
-  const rows: Row[] = [];
-  for (let page = 0; ; page++) {
-    const a = page * PAGE;
-    const { data, error } = await query(a, a + PAGE - 1);
+      .range(page * PAGE, page * PAGE + PAGE - 1);
     if (error) throw new Error(error.message);
     const batch = (data ?? []) as unknown as Row[];
     rows.push(...batch);
     if (batch.length < PAGE) break;
   }
+  return rows;
+}
 
-  const byFormMap = new Map<string, number>();
-  const utmMaps: Record<UtmDim, Map<string, number>> = {
+const funnelOf = (rows: Row[]): Funnel => {
+  let agendaram = 0;
+  let abandonaram = 0;
+  for (const r of rows) {
+    if (r.status === "scheduled") agendaram++;
+    else if (r.status === "partial") abandonaram++;
+  }
+  return {
+    iniciaram: rows.length,
+    terminaram: rows.length - abandonaram,
+    agendaram,
+    abandonaram,
+  };
+};
+
+/** Data-calendário SP de um instante ISO-UTC, sem depender de Intl. */
+const spDate = (iso: string) =>
+  new Date(Date.parse(iso) - TZ_OFFSET_HOURS * 3600_000).toISOString().slice(0, 10);
+
+/** Lê a janela (e a anterior, p/ deltas) e agrega funil, série diária e quebras. */
+export async function getLeads(period: Period): Promise<LeadsSummary> {
+  const { from, to } = period;
+  const prev = periodoAnterior(period);
+
+  // as duas janelas em paralelo — a anterior só alimenta os deltas
+  const [rows, rowsPrev] = await Promise.all([
+    fetchRows(from, to),
+    prev ? fetchRows(prev.from, prev.to) : Promise.resolve(null),
+  ]);
+
+  const byFormMap = new Map<string, Count>();
+  const utmMaps: Record<UtmDim, Map<string, Count>> = {
     source: new Map(),
+    content: new Map(),
     medium: new Map(),
     campaign: new Map(),
-    content: new Map(),
     term: new Map(),
   };
-  const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+  const dayMap = new Map<string, Day>();
+
+  const bump = (m: Map<string, Count>, label: string, agendou: boolean) => {
+    const cur = m.get(label);
+    if (cur) {
+      cur.leads++;
+      if (agendou) cur.agendou++;
+    } else {
+      m.set(label, { label, leads: 1, agendou: agendou ? 1 : 0 });
+    }
+  };
 
   for (const r of rows) {
+    const st = (r.status ?? "") as Status;
+    const agendou = st === "scheduled";
+
     bump(
       byFormMap,
       FORM_ALIAS[r.form_id ?? ""] ??
         (r.form_name || r.form_id || "(sem nome)").trim(),
+      agendou,
     );
     for (const dim of UTM_DIMS) {
-      const raw = r[`utm_${dim}` as const];
-      bump(utmMaps[dim], (raw || "").trim() || "(não informado)");
+      bump(utmMaps[dim], (r[`utm_${dim}` as const] || "").trim() || "(não informado)", agendou);
     }
+
+    const dia = spDate(r.submitted_at);
+    const d = dayMap.get(dia) ?? { date: dia, leads: 0, abandonou: 0, terminou: 0, agendou: 0 };
+    d.leads++;
+    if (agendou) d.agendou++;
+    else if (st === "partial") d.abandonou++;
+    else d.terminou++;
+    dayMap.set(dia, d);
   }
 
-  /** Ordena desc e corta no top N, somando a cauda numa linha "(outros)". */
-  const cut = (m: Map<string, number>): Breakdown => {
-    const all = [...m.entries()]
-      .map(([label, count]) => ({ label, count }))
-      .sort((x, y) => y.count - x.count || x.label.localeCompare(y.label));
+  /** Ordena por volume desc e corta no top N, somando a cauda em "(outros)". */
+  const cut = (m: Map<string, Count>): Breakdown => {
+    const all = [...m.values()].sort(
+      (x, y) => y.leads - x.leads || x.label.localeCompare(y.label),
+    );
     if (all.length <= TOP) return { rows: all, distinct: all.length, capped: false };
     const tail = all.slice(TOP);
-    const label = `(outros ${tail.length} ${tail.length === 1 ? "valor" : "valores"})`;
     return {
       rows: [
         ...all.slice(0, TOP),
-        { label, count: tail.reduce((s, r) => s + r.count, 0) },
+        {
+          label: `(outros ${tail.length} ${tail.length === 1 ? "valor" : "valores"})`,
+          leads: tail.reduce((s, r) => s + r.leads, 0),
+          agendou: tail.reduce((s, r) => s + r.agendou, 0),
+        },
       ],
       distinct: all.length,
       capped: true,
@@ -215,13 +314,15 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
   };
 
   return {
-    total: rows.length,
+    funnel: funnelOf(rows),
+    anterior: rowsPrev ? funnelOf(rowsPrev) : null,
+    daily: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byForm: cut(byFormMap),
     byUtm: {
       source: cut(utmMaps.source),
+      content: cut(utmMaps.content),
       medium: cut(utmMaps.medium),
       campaign: cut(utmMaps.campaign),
-      content: cut(utmMaps.content),
       term: cut(utmMaps.term),
     },
     from,
