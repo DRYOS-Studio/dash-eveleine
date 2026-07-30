@@ -1,4 +1,4 @@
-# Eveleine · Captação — dashboard enxuta
+# Captação Versalhes — dashboard enxuta
 
 Dashboard Next.js **mínima**: mostra apenas os **leads inscritos em formulários** e as
 **origens** deles (`utm_source`), com filtro de período. Versão reduzida do

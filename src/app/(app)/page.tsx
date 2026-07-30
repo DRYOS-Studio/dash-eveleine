@@ -634,6 +634,17 @@ export default async function Page({
           <TabelaQuebra data={data.byForm} coluna="Formulário" />
         </Card>
 
+        <Card title="Por país" sub={legenda(data.byGeo.pais)}>
+          <TabelaQuebra data={data.byGeo.pais} coluna="País" />
+        </Card>
+
+        <Card
+          title="Por região"
+          sub={`${legenda(data.byGeo.regiao)} · estado qualificado pelo país`}
+        >
+          <TabelaQuebra data={data.byGeo.regiao} coluna="Estado / região" />
+        </Card>
+
         <Card
           title="Origem — utm_source"
           sub={legenda(data.byUtm.source)}

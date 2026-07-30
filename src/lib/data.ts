@@ -54,6 +54,13 @@ export type Breakdown = { rows: Count[]; distinct: number; capped: boolean };
 export const UTM_DIMS = ["source", "content", "medium", "campaign", "term"] as const;
 export type UtmDim = (typeof UTM_DIMS)[number];
 
+/**
+ * Geo vem do jsonb `geolocation`. Leio só os dois campos que interessam, via
+ * seletor de campo do PostgREST — trazer o objeto inteiro engordaria o payload
+ * de 11 mil linhas por nada.
+ */
+const GEO_COLS = ["pais:geolocation->>country", "estado:geolocation->>state"] as const;
+
 export type Funnel = {
   iniciaram: number;
   terminaram: number; // complete + scheduled
@@ -77,6 +84,8 @@ export type LeadsSummary = {
   daily: Day[];
   byForm: Breakdown;
   byUtm: Record<UtmDim, Breakdown>;
+  /** `regiao` qualifica o estado com o país — a audiência não é só do Brasil. */
+  byGeo: { pais: Breakdown; regiao: Breakdown };
   from: string | null;
   to: string | null;
 };
@@ -87,6 +96,8 @@ type Row = {
   form_name: string | null;
   status: string | null;
   submitted_at: string;
+  pais: string | null;
+  estado: string | null;
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
@@ -195,6 +206,7 @@ const COLS = [
   COL.formName,
   COL.status,
   COL.submittedAt,
+  ...GEO_COLS,
   ...UTM_DIMS.map((d) => `utm_${d}`),
 ].join(", ");
 
@@ -257,6 +269,8 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
     campaign: new Map(),
     term: new Map(),
   };
+  const paisMap = new Map<string, Count>();
+  const regiaoMap = new Map<string, Count>();
   const dayMap = new Map<string, Day>();
 
   const bump = (m: Map<string, Count>, label: string, agendou: boolean) => {
@@ -282,6 +296,13 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
     for (const dim of UTM_DIMS) {
       bump(utmMaps[dim], (r[`utm_${dim}` as const] || "").trim() || "(não informado)", agendou);
     }
+
+    const pais = (r.pais || "").trim();
+    const estado = (r.estado || "").trim();
+    bump(paisMap, pais || "(não informado)", agendou);
+    // "São Paulo" e "California" na mesma lista precisam do país pra não virar
+    // uma soma sem sentido — e há estados homônimos entre países
+    bump(regiaoMap, estado ? (pais ? `${estado} · ${pais}` : estado) : "(não informado)", agendou);
 
     const dia = spDate(r.submitted_at);
     const d = dayMap.get(dia) ?? { date: dia, leads: 0, abandonou: 0, terminou: 0, agendou: 0 };
@@ -325,6 +346,7 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
       campaign: cut(utmMaps.campaign),
       term: cut(utmMaps.term),
     },
+    byGeo: { pais: cut(paisMap), regiao: cut(regiaoMap) },
     from,
     to,
   };

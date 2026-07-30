@@ -12,7 +12,7 @@ export default async function LoginPage({
         className="w-full max-w-sm rounded-2xl border bg-[var(--color-surface)] p-8 shadow-xl"
       >
         <div className="mb-6">
-          <h1 className="text-xl font-semibold">Eveleine · Captação</h1>
+          <h1 className="text-xl font-semibold">Captação Versalhes</h1>
           <p className="text-sm text-[var(--color-muted)] mt-1">
             Acesso restrito. Informe a senha.
           </p>

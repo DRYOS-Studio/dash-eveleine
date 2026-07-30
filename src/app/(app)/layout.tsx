@@ -14,7 +14,7 @@ export default async function AppLayout({
     <div className="min-h-screen">
       <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6">
         <span className="text-sm font-medium tracking-tight">
-          Eveleine <span className="text-[var(--color-muted)]">· Captação</span>
+          Captação <span className="text-[var(--color-muted)]">Versalhes</span>
         </span>
         <form action="/api/logout" method="POST">
           <button

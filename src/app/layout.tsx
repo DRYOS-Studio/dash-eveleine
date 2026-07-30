@@ -16,7 +16,7 @@ const caslon = Libre_Caslon_Text({
 });
 
 export const metadata: Metadata = {
-  title: "Eveleine · Captação",
+  title: "Captação Versalhes",
   description: "Leads inscritos por formulário e origem",
 };
 
