@@ -30,7 +30,7 @@ const FORM_ALIAS: Record<string, string> = {
   "6a456089bc6c8b26eb0b5a56": "Versalhes | Reativação",
 };
 
-const TZ_OFFSET_HOURS = 3; // America/Sao_Paulo = UTC-3 (sem DST)
+export const TZ_OFFSET_HOURS = 3; // America/Sao_Paulo = UTC-3 (sem DST)
 const PAGE = 1000; // PostgREST corta em 1000 linhas/request → paginar
 
 const TOP = 10; // barras por quebra; o resto vira uma linha "(outros)"
@@ -117,16 +117,16 @@ export type Period = {
 const isDate = (s: string | undefined): s is string => /^\d{4}-\d{2}-\d{2}$/.test(s ?? "");
 
 /** 00:00 de um dia-calendário SP, em ISO-UTC. */
-const spMidnight = (y: number, m: number, d: number) =>
+export const spMidnight = (y: number, m: number, d: number) =>
   new Date(Date.UTC(y, m, d, TZ_OFFSET_HOURS, 0, 0)).toISOString();
 
 /** Data-calendário SP de agora, deslocando -3h e lendo em UTC. */
-function spToday(): [number, number, number] {
+export function spToday(): [number, number, number] {
   const sp = new Date(Date.now() - TZ_OFFSET_HOURS * 3600_000);
   return [sp.getUTCFullYear(), sp.getUTCMonth(), sp.getUTCDate()];
 }
 
-const ymd = (y: number, m: number, d: number) =>
+export const ymd = (y: number, m: number, d: number) =>
   new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
 
 /**
@@ -247,7 +247,7 @@ const funnelOf = (rows: Row[]): Funnel => {
 };
 
 /** Data-calendário SP de um instante ISO-UTC, sem depender de Intl. */
-const spDate = (iso: string) =>
+export const spDate = (iso: string) =>
   new Date(Date.parse(iso) - TZ_OFFSET_HOURS * 3600_000).toISOString().slice(0, 10);
 
 /** Lê a janela (e a anterior, p/ deltas) e agrega funil, série diária e quebras. */
@@ -350,4 +350,79 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
     from,
     to,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ponte com o painel de Agenda.
+//
+// O Calendly não sabe de onde o lead veio: ele só guarda o agendamento. Quem
+// sabe é este banco, que grava `calendly_event_id` na linha do formulário. O
+// mapa abaixo é a única cola entre as duas fontes.
+//
+// Puxa o histórico inteiro (2.272 linhas com agendamento em set/2026, ~3
+// páginas) em vez de filtrar por data: o lead preenche o formulário dias antes
+// da reunião acontecer, então uma janela sobre `submitted_at` cortaria
+// justamente os agendamentos mais distantes. O custo é baixo e o resultado é
+// cacheável inteiro.
+
+export type LeadOrigem = {
+  form: string;
+  utmSource: string;
+  pais: string;
+};
+
+type OrigemRow = {
+  calendly_event_id: string | null;
+  form_id: string | null;
+  form_name: string | null;
+  utm_source: string | null;
+  pais: string | null;
+};
+
+const ORIGEM_COLS = [
+  "calendly_event_id",
+  COL.formId,
+  COL.formName,
+  "utm_source",
+  GEO_COLS[0],
+].join(", ");
+
+/**
+ * Mapa `uuid do evento Calendly` → origem do lead.
+ *
+ * Chave em minúsculas: o UUID vem do Calendly num request e do Postgres no
+ * outro, e não temos garantia de que os dois normalizem o caso igual.
+ */
+export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>> {
+  const mapa = new Map<string, LeadOrigem>();
+
+  for (let page = 0; ; page++) {
+    const { data, error } = await supabaseAdmin
+      .from(SOURCE)
+      .select(ORIGEM_COLS)
+      .not("calendly_event_id", "is", null)
+      .order(COL.formId, { ascending: true })
+      .order(COL.id, { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw new Error(error.message);
+
+    const batch = (data ?? []) as unknown as OrigemRow[];
+    for (const r of batch) {
+      const uuid = (r.calendly_event_id ?? "").trim().toLowerCase();
+      if (!uuid) continue;
+      // primeira linha vence: se duas respostas apontam pro mesmo evento
+      // (reenvio do formulário), a mais antiga é a que gerou o agendamento
+      if (mapa.has(uuid)) continue;
+      mapa.set(uuid, {
+        form:
+          FORM_ALIAS[r.form_id ?? ""] ??
+          (r.form_name || r.form_id || "(sem nome)").trim(),
+        utmSource: (r.utm_source || "").trim() || "(não informado)",
+        pais: (r.pais || "").trim() || "(não informado)",
+      });
+    }
+    if (batch.length < PAGE) break;
+  }
+
+  return mapa;
 }

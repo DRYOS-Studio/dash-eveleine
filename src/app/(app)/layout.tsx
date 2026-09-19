@@ -23,8 +23,22 @@ export default async function AppLayout({
             height={32}
             className="h-8 w-auto"
           />
-          Captação <span className="text-[var(--color-muted)]">Versalhes</span>
+          <span className="text-[var(--color-muted)]">Versalhes</span>
         </span>
+        <nav className="flex gap-1 text-sm">
+          {[
+            ["/", "Captação"],
+            ["/agenda", "Agenda"],
+          ].map(([href, nome]) => (
+            <a
+              key={href}
+              href={href}
+              className="rounded-md px-3 py-1.5 text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+            >
+              {nome}
+            </a>
+          ))}
+        </nav>
         <form action="/api/logout" method="POST">
           <button
             type="submit"
