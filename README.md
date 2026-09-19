@@ -9,6 +9,9 @@ Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-alt
   no-show, cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly, enriquecida
   pelo Supabase.
 
+A definição de cada indicador — numerador, denominador e o que fica de fora — está no
+[manual do produto](docs/manual-do-produto.md), escrito para quem lê a dash.
+
 ## Stack
 
 - Next.js 15 (App Router) + React 19 · Tailwind CSS v4
