@@ -1,1 +1,1 @@
-export const SESSION_COOKIE = "eveleine_session";
+export const SESSION_COOKIE = "partiu_session";

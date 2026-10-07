@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -11,44 +12,45 @@ export default async function AppLayout({
   if (!(await isAuthenticated())) redirect("/login");
 
   return (
-    <div className="min-h-screen">
-      <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6">
-        <span className="flex items-center gap-2.5 text-sm font-medium tracking-tight">
-          {/* fonte de 96px renderizada a 32 = 3x exato em retina; alt vazio
-              porque o nome ao lado já identifica a marca */}
-          <img
-            src="/versalhes-crest.png"
-            alt=""
-            width={21}
-            height={32}
-            className="h-8 w-auto"
-          />
-          <span className="text-[var(--color-muted)]">Versalhes</span>
-        </span>
-        <nav className="flex gap-1 text-sm">
-          {[
-            ["/", "Captação"],
-            ["/agenda", "Agenda"],
-          ].map(([href, nome]) => (
-            <a
-              key={href}
-              href={href}
-              className="rounded-md px-3 py-1.5 text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
-            >
-              {nome}
-            </a>
-          ))}
-        </nav>
-        <form action="/api/logout" method="POST">
-          <button
-            type="submit"
-            className="text-sm text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
-          >
-            Sair
-          </button>
-        </form>
+    <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-ink)]">
+      <header className="sticky top-0 z-40 border-b border-[var(--color-line)] bg-[#FAFAF8]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <Image
+                src="/dryos-logo.png"
+                alt="DRYOS"
+                width={70}
+                height={20}
+                className="h-4 w-auto object-contain opacity-90"
+                priority
+              />
+              <span className="text-xs text-[var(--color-mute-soft)]">/</span>
+              <span className="font-heading text-base sm:text-lg font-bold tracking-tight text-[var(--color-ink)]">
+                Partiu Empreender
+              </span>
+            </div>
+
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[var(--color-oak)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-good)] animate-pulse" />
+              Tempo Real
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <form action="/api/logout" method="POST">
+              <button
+                type="submit"
+                className="font-mono text-xs uppercase tracking-wider text-[var(--color-mute)] transition hover:text-[var(--color-ink)]"
+              >
+                Sair
+              </button>
+            </form>
+          </div>
+        </div>
       </header>
-      <main className="p-4 sm:p-6 md:p-8">{children}</main>
+
+      <main className="mx-auto max-w-[1320px] p-4 sm:p-6 lg:p-8">{children}</main>
     </div>
   );
 }

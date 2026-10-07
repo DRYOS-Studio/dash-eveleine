@@ -1,71 +1,89 @@
 @import "tailwindcss";
 
-/* Design system Altis (Cortex) — variante escura.
-   Não é inversão do tema claro: o ramp de terracota foi re-degrauzado para o
-   fundo escuro e validado contra ele (contraste vs superfície, monotonia de
-   luminosidade, hue única). Se um dia precisar do tema claro de volta, os
-   valores originais estão no histórico do git (commit 33b06b5). */
+/* Design System DRYOS 2026
+   Base mineral clara, verde Oak profundo, tipografia editorial de alta precisão.
+   Referência: /site_dryos_2026/DESIGN.md */
 @theme {
-  --color-bg: #141210; /* superfície da página */
-  --color-surface: #1f1b16; /* card */
-  --color-surface-2: #2c261f; /* trilho de barra / grid */
-  --color-border: #332c24;
-  --color-muted: #a89e90; /* texto secundário */
-  --color-muted-2: #837a6d; /* eixos, rótulos fracos */
-  --color-text: #f4f1ea;
-  --color-accent: #d98153; /* terracota, sobre fundo escuro */
-  --color-accent-hover: #e0906a;
-  --color-positive: #2bbf90; /* delta bom */
-  --color-negative: #ef6b63; /* delta ruim */
+  --color-bg: #FAFAF8; /* Fundo principal mineral */
+  --color-surface: #F2F2EE; /* Superfícies, tabelas e apoio */
+  --color-surface-2: #ECECE6; /* Superfície secundária */
+  --color-card: #FFFFFF; /* Fundo de cards brancos */
+  --color-ink: #0A0A0A; /* Texto principal e CTA forte */
+  --color-ink-soft: #1A1A1A; /* Texto escuro secundário */
+  --color-mute: #6B6B68; /* Texto auxiliar */
+  --color-mute-soft: #9A9A95; /* Metadados de baixa ênfase */
+  --color-oak: #1F3A2A; /* Verde de marca, ação e destaque */
+  --color-oak-light: #4A6A52; /* Verde secundário e hover */
+  --color-oak-tint: #E9EEE9; /* Fundo suave de destaque / pill */
+  --color-line: rgba(26, 26, 26, 0.08); /* Divisores e bordas discretas */
+  --color-line-strong: rgba(26, 26, 26, 0.16); /* Bordas de componentes */
 
-  /* Ramp ordinal do funil — claro→escuro = pior→melhor estágio.
-     Validado (--ordinal, superfície #1f1b16): ΔL ok, hue spread 10°,
-     degrau mais escuro a 3,13:1 da superfície. */
-  --color-stage-1: #f0b48c; /* abandonou */
-  --color-stage-2: #d07f50; /* terminou, não agendou */
-  --color-stage-3: #a05531; /* agendou */
+  /* Cores funcionais DRYOS */
+  --color-good: #2F7A4F; /* Estado positivo / sucesso */
+  --color-warn: #B07A12; /* Aviso */
+  --color-clay: #8A4A33; /* Acento terroso */
+  --color-wa: #1F7A55; /* WhatsApp */
+  --color-ig: #B0418C; /* Instagram */
+
+  /* Compatibilidade semântica com componentes existentes */
+  --color-border: rgba(26, 26, 26, 0.08);
+  --color-muted: #6B6B68;
+  --color-text: #0A0A0A;
+  --color-accent: #1F3A2A; /* Verde Oak como cor de ação */
+  --color-accent-hover: #0A0A0A;
+  --color-negative: #C0573B;
 
   --font-sans:
-    var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+    var(--font-body-face), "Onest", system-ui, -apple-system, sans-serif;
   --font-heading:
-    var(--font-heading-face), ui-serif, Georgia, Cambria, serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    var(--font-display-face), "Funnel Display", sans-serif;
+  --font-display:
+    var(--font-display-face), "Funnel Display", sans-serif;
+  --font-mono:
+    var(--font-mono-face), "JetBrains Mono", monospace;
 }
 
 html {
-  color-scheme: dark;
-}
-
-body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  color-scheme: light;
+  scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2,
-h3 {
-  font-family: var(--font-heading);
-  letter-spacing: -0.012em;
-  text-wrap: balance;
-}
+@layer base {
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+  }
 
-* {
-  border-color: var(--color-border);
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  * {
+    border-color: var(--color-line);
+  }
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: #E9EEE9;
+  color: #1F3A2A;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 3px;
+  outline: 2px solid #93B596;
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
-/* datas nativas legíveis no escuro */
 input[type="date"] {
-  color-scheme: dark;
+  color-scheme: light;
 }

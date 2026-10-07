@@ -1,65 +1,15 @@
-import type { Breakdown } from "@/lib/data";
-
-// Peças de apresentação usadas por mais de uma página (Captação e Agenda).
-// O que serve a uma página só continua morando no arquivo dela — aqui entra
-// exclusivamente o que já tem dois usos reais.
-
+export const cf = (n: number, hideDecimals = false) =>
+  n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: hideDecimals ? 0 : 2,
+    maximumFractionDigits: hideDecimals ? 0 : 2,
+  });
+export const cfInt = (n: number) => cf(n, true);
 export const nf = (n: number) => n.toLocaleString("pt-BR");
 export const pf = (n: number) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
-export const fmtDate = (d: string) => d.split("-").reverse().join("/");
-export const diaMes = (d: string) => d.slice(8, 10);
-export const taxa = (parte: number, total: number) => (total ? (parte / total) * 100 : 0);
 
-/** Arredonda o topo do eixo pra um número limpo acima do máximo. */
-export function niceMax(v: number): number {
-  if (v <= 5) return 5;
-  const mag = Math.pow(10, Math.floor(Math.log10(v)));
-  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]) {
-    if (v <= m * mag) return m * mag;
-  }
-  return 10 * mag;
-}
-
-/** Subtítulo de card de quebra: quantos valores distintos, e se foi cortado no top 10. */
-export function legenda(b: Breakdown): string {
-  const plural = b.distinct === 1 ? "valor" : "valores";
-  return b.capped
-    ? `${nf(b.distinct)} ${plural} — top 10 abaixo`
-    : `${nf(b.distinct)} ${plural}`;
-}
-
-export function Delta({
-  atual,
-  anterior,
-  pp,
-}: {
-  atual: number;
-  anterior: number;
-  pp?: boolean;
-}) {
-  // pp = pontos percentuais (para taxas); senão, variação relativa
-  const dif = pp ? atual - anterior : anterior === 0 ? 0 : ((atual - anterior) / anterior) * 100;
-  if (!pp && anterior === 0) {
-    return <span className="text-xs text-[var(--color-muted-2)]">sem base anterior</span>;
-  }
-  const subiu = dif >= 0;
-  const cor = subiu ? "text-[var(--color-positive)]" : "text-[var(--color-negative)]";
-  const valor = pp
-    ? Math.abs(dif).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " p.p."
-    : pf(Math.abs(dif));
-  return (
-    <span className={`flex items-baseline gap-1.5 text-xs font-semibold ${cor}`}>
-      <span aria-hidden className="text-[9px]">
-        {subiu ? "▲" : "▼"}
-      </span>
-      {valor}
-      <span className="font-normal text-[var(--color-muted-2)]">
-        {subiu ? "acima de" : "abaixo de"} {pp ? pf(anterior) : nf(anterior)}
-      </span>
-    </span>
-  );
-}
 
 export function Tile({
   label,
@@ -72,15 +22,29 @@ export function Tile({
   children?: React.ReactNode;
   hero?: boolean;
 }) {
+  const isLong = valor.length > 12;
+  const isMedium = valor.length > 8;
+
+  const sizeClass = hero
+    ? "text-3xl sm:text-4xl lg:text-5xl"
+    : isLong
+      ? "text-base sm:text-lg lg:text-lg xl:text-xl"
+      : isMedium
+        ? "text-lg sm:text-xl lg:text-xl xl:text-2xl"
+        : "text-xl sm:text-2xl lg:text-2xl xl:text-3xl";
+
   return (
-    <div className="flex flex-col gap-0.5 rounded-xl border bg-[var(--color-surface)] p-5">
-      <span className="text-[13px] text-[var(--color-muted)]">{label}</span>
+    <div className="flex flex-col justify-between min-w-0 rounded-xl border border-[var(--color-line)] bg-white p-4 sm:p-4.5 overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-[var(--color-mute)] truncate" title={label}>
+        {label}
+      </span>
       <span
-        className={`font-semibold leading-tight tracking-tight ${hero ? "text-5xl" : "text-3xl"}`}
+        className={`font-heading font-bold leading-tight tracking-tight text-[var(--color-ink)] whitespace-nowrap truncate mt-1 ${sizeClass}`}
+        title={valor}
       >
         {valor}
       </span>
-      {children}
+      <div className="mt-2 text-xs text-[var(--color-mute)] truncate">{children}</div>
     </div>
   );
 }
@@ -97,24 +61,19 @@ export function Card({
   wide?: boolean;
 }) {
   return (
-    // min-w-0: sem isso o item de grid cresce pra caber a tabela e empurra a
-    // página pra rolar lateralmente, em vez de a tabela rolar dentro do card
     <section
-      className={`min-w-0 rounded-xl border bg-[var(--color-surface)] p-5 ${wide ? "md:col-span-2" : ""}`}
+      className={`min-w-0 rounded-xl border border-[var(--color-line-strong)] bg-white p-5 sm:p-6 shadow-[0_1px_4px_rgba(0,0,0,0.02)] ${wide ? "md:col-span-2" : ""}`}
     >
-      <h2 className="text-base font-semibold">{title}</h2>
-      {sub && <p className="mb-4 text-[13px] text-[var(--color-muted)]">{sub}</p>}
-      {!sub && <div className="mb-4" />}
+      <h2 className="font-heading text-lg font-bold tracking-tight text-[var(--color-ink)]">{title}</h2>
+      {sub && <p className="mb-5 mt-1 text-[13px] text-[var(--color-mute)]">{sub}</p>}
+      {!sub && <div className="mb-5" />}
       {children}
     </section>
   );
 }
 
 /**
- * Chips de janela + intervalo personalizado. As duas páginas filtram por
- * período, mas com chaves diferentes: a Captação olha pra trás (leads que já
- * entraram), a Agenda também olha pra frente (reuniões que vão acontecer).
- * Daí as chaves e a rota virem por prop em vez de fixas.
+ * Chips de janela + intervalo personalizado com estética editorial DRYOS.
  */
 export function FiltroPeriodo({
   action,
@@ -133,7 +92,7 @@ export function FiltroPeriodo({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <nav className="flex flex-wrap gap-1 rounded-lg border bg-[var(--color-surface)] p-1">
+      <nav className="flex flex-wrap gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-1">
         {keys.map((k) => {
           const active = k === activeKey;
           return (
@@ -141,10 +100,10 @@ export function FiltroPeriodo({
               key={k}
               href={`${action}?range=${k}`}
               aria-current={active ? "page" : undefined}
-              className={`rounded-md px-3 py-1.5 text-sm transition ${
+              className={`rounded-md px-3 py-1.5 text-xs sm:text-sm transition ${
                 active
-                  ? "bg-[var(--color-accent)] font-medium text-[#231108]"
-                  : "text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                  ? "bg-[var(--color-oak)] font-medium text-[var(--color-bg)] shadow-xs"
+                  : "text-[var(--color-mute)] hover:text-[var(--color-ink)]"
               }`}
             >
               {labels[k]}
@@ -156,11 +115,11 @@ export function FiltroPeriodo({
       <form
         method="get"
         action={action}
-        className={`flex flex-wrap items-center gap-2 rounded-lg border bg-[var(--color-surface)] p-1 pl-3 ${
-          activeKey === "custom" ? "border-[var(--color-accent)]" : ""
+        className={`flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-1 pl-3 ${
+          activeKey === "custom" ? "border-[var(--color-oak)]" : ""
         }`}
       >
-        <label htmlFor="from" className="text-sm text-[var(--color-muted)]">
+        <label htmlFor="from" className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-mute)]">
           De
         </label>
         <input
@@ -168,9 +127,9 @@ export function FiltroPeriodo({
           type="date"
           name="from"
           defaultValue={fromDate ?? ""}
-          className="rounded-md border bg-transparent px-2 py-1 text-sm"
+          className="rounded-md border border-[var(--color-line-strong)] bg-white px-2 py-1 text-xs sm:text-sm text-[var(--color-ink)]"
         />
-        <label htmlFor="to" className="text-sm text-[var(--color-muted)]">
+        <label htmlFor="to" className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-mute)]">
           até
         </label>
         <input
@@ -178,11 +137,11 @@ export function FiltroPeriodo({
           type="date"
           name="to"
           defaultValue={toDate ?? ""}
-          className="rounded-md border bg-transparent px-2 py-1 text-sm"
+          className="rounded-md border border-[var(--color-line-strong)] bg-white px-2 py-1 text-xs sm:text-sm text-[var(--color-ink)]"
         />
         <button
           type="submit"
-          className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[#231108]"
+          className="rounded-md bg-[var(--color-oak)] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--color-bg)] transition hover:bg-[var(--color-ink)]"
         >
           Aplicar
         </button>

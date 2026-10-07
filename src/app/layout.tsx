@@ -1,23 +1,34 @@
 import type { Metadata } from "next";
-import { Inter, Libre_Caslon_Text } from "next/font/google";
+import { Funnel_Display, Onest, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const funnelDisplay = Funnel_Display({
   subsets: ["latin"],
-  variable: "--font-body",
+  variable: "--font-display-face",
   display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const caslon = Libre_Caslon_Text({
-  weight: ["400", "700"],
+const onest = Onest({
   subsets: ["latin"],
-  variable: "--font-heading-face",
+  variable: "--font-body-face",
   display: "swap",
+  weight: ["300", "400", "500", "600"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono-face",
+  display: "swap",
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Captação Versalhes",
-  description: "Leads inscritos por formulário e origem",
+  title: "Partiu Empreender · Inteligência de Vendas (DRYOS)",
+  description: "Vendas, retenção e recompras com consolidação em tempo real",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -26,7 +37,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${caslon.variable}`}>
+    <html
+      lang="pt-BR"
+      className={`${funnelDisplay.variable} ${onest.variable} ${jetbrainsMono.variable}`}
+    >
       <body>{children}</body>
     </html>
   );

@@ -1,25 +1,19 @@
 import {
-  getLeads,
-  resolvePeriod,
+  getDashboardData,
   RANGE_KEYS,
-  type Breakdown,
-  type Day,
-  type Funnel,
   type RangeKey,
-} from "@/lib/data";
+} from "@/lib/sales-data";
 import {
   Card,
-  Delta,
   FiltroPeriodo,
   Tile,
-  diaMes,
-  fmtDate,
-  legenda,
+  cf,
   nf,
-  niceMax,
   pf,
-  taxa,
 } from "@/components/ui";
+import { ProductFamilyTable } from "@/components/product-family-table";
+import { LatestSalesFeed } from "@/components/latest-sales-feed";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -29,515 +23,357 @@ const RANGE_LABEL: Record<RangeKey, string> = {
   "7": "7 dias",
   "30": "30 dias",
   "90": "90 dias",
-  all: "Tudo",
+  ano: "Este Ano",
+  all: "Todo o histórico",
 };
 
-const MIN_DIAS_GRAFICO = 3; // com 1 ou 2 dias o gráfico não diz nada que os KPIs já não digam
-const N_BAIXO = 20; // abaixo disso a taxa do dia é ruído de amostra
+type PageProps = {
+  searchParams: Promise<{
+    range?: string;
+    from?: string;
+    to?: string;
+  }>;
+};
 
-/** Tabela de uma quebra: volume + agendados + taxa por linha. */
-function TabelaQuebra({ data, coluna }: { data: Breakdown; coluna: string }) {
-  if (data.rows.length === 0) {
-    return <p className="text-sm text-[var(--color-muted)]">Nenhum lead no período.</p>;
-  }
-  // A escala da barra ignora linhas de amostra pequena: uma origem com 1 lead e
-  // 1 agendamento marca 100% e comprimiria todas as barras reais a um traço.
-  const maxTaxa = Math.max(
-    ...data.rows.filter((r) => r.leads >= N_BAIXO).map((r) => taxa(r.agendou, r.leads)),
-    0.01,
-  );
-  return (
-    <>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[13px]">
-        <thead>
-          <tr className="text-[11px] uppercase tracking-wide text-[var(--color-muted-2)]">
-            <th className="py-1.5 pr-3 text-left font-semibold">{coluna}</th>
-            <th className="px-3 py-1.5 text-right font-semibold">Leads</th>
-            <th className="px-3 py-1.5 text-right font-semibold">Agend.</th>
-            <th className="py-1.5 pl-3 text-right font-semibold">Taxa</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((r) => {
-            const t = taxa(r.agendou, r.leads);
-            return (
-              <tr key={r.label} className="border-t">
-                <td className="max-w-[22rem] truncate py-2 pr-3" title={r.label}>
-                  {r.label}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{nf(r.leads)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-[var(--color-muted)]">
-                  {nf(r.agendou)}
-                </td>
-                <td className="py-2 pl-3">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
-                      {r.leads >= N_BAIXO && (
-                        <span
-                          className="block h-full rounded-full bg-[var(--color-stage-3)]"
-                          style={{ width: `${Math.min(100, (t / maxTaxa) * 100)}%` }}
-                        />
-                      )}
-                    </span>
-                    {r.leads >= N_BAIXO ? (
-                      <b className="w-14 text-right font-semibold tabular-nums">{pf(t)}</b>
-                    ) : (
-                      <b
-                        className="w-14 text-right font-normal tabular-nums text-[var(--color-muted-2)]"
-                        title={`Só ${nf(r.leads)} ${r.leads === 1 ? "lead" : "leads"} — taxa sem significado estatístico`}
-                      >
-                        {pf(t)}*
-                      </b>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        </table>
-      </div>
-      {data.rows.some((r) => r.leads < N_BAIXO) && (
-        <p className="mt-3 text-xs text-[var(--color-muted-2)]">
-          * menos de {N_BAIXO} leads — taxa mostrada, mas fora da escala da barra por
-          falta de amostra.
-        </p>
-      )}
-    </>
-  );
-}
+export default async function SalesDashboardPage(props: PageProps) {
+  const params = await props.searchParams;
+  const range = (params.range as RangeKey) || "all";
+  const { from, to } = params;
 
-/** Colunas empilhadas por estágio, uma por dia. SVG montado no servidor. */
-function GraficoDiario({ daily }: { daily: Day[] }) {
-  const W = 980,
-    H = 250,
-    ML = 46,
-    MR = 8,
-    MT = 10,
-    MB = 26;
-  const pw = W - ML - MR,
-    ph = H - MT - MB;
-  const max = niceMax(Math.max(...daily.map((d) => d.leads)));
-  const band = pw / daily.length;
-  const bw = Math.min(22, Math.max(2, band - 4));
-  const y = (v: number) => MT + ph * (1 - v / max);
-  const ticks = [0, max / 2, max];
-  const passo = Math.max(1, Math.ceil(daily.length / 12));
+  const data = await getDashboardData(range, from, to);
+  const { synthesis, cenarioUnica, cenarioRecompra, shareLiquidoRecompra } = data;
 
-  const SEG = [
-    { k: "agendou", cor: "var(--color-stage-3)", nome: "agendou" },
-    { k: "terminou", cor: "var(--color-stage-2)", nome: "terminou" },
-    { k: "abandonou", cor: "var(--color-stage-1)", nome: "abandonou" },
-  ] as const;
+  const activeKey = from || to ? "custom" : range;
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full"
-      role="img"
-      aria-label={`Leads por dia de ${fmtDate(daily[0].date)} a ${fmtDate(daily[daily.length - 1].date)}, divididos por estágio do funil`}
-    >
-      {ticks.map((t) => (
-        <g key={t}>
-          <line
-            x1={ML}
-            x2={W - MR}
-            y1={y(t)}
-            y2={y(t)}
-            stroke={t === 0 ? "var(--color-border)" : "var(--color-surface-2)"}
-            strokeWidth="1"
-          />
-          <text
-            x={ML - 8}
-            y={y(t) + 3.5}
-            textAnchor="end"
-            className="fill-[var(--color-muted-2)] text-[10px] tabular-nums"
-          >
-            {nf(t)}
-          </text>
-        </g>
-      ))}
-      {daily.map((d, i) => {
-        const x = ML + band * i + (band - bw) / 2;
-        let acc = 0;
-        return (
-          <g key={d.date}>
-            <title>{`${fmtDate(d.date)} — ${nf(d.leads)} entraram · ${nf(d.agendou)} agendaram · ${nf(d.terminou)} terminaram · ${nf(d.abandonou)} abandonaram`}</title>
-            {SEG.map((s) => {
-              const v = d[s.k];
-              if (v <= 0) return null;
-              const y0 = y(acc);
-              acc += v;
-              // gap de 2px na cor da superfície separa os segmentos
-              return (
-                <rect
-                  key={s.k}
-                  x={x}
-                  y={y(acc)}
-                  width={bw}
-                  height={Math.max(1, y0 - y(acc) - 2)}
-                  rx="2"
-                  fill={s.cor}
-                />
-              );
-            })}
-          </g>
-        );
-      })}
-      {daily.map((d, i) =>
-        i % passo === 0 || i === daily.length - 1 ? (
-          <text
-            key={d.date}
-            x={ML + band * i + band / 2}
-            y={H - 8}
-            textAnchor="middle"
-            className="fill-[var(--color-muted-2)] text-[10px]"
-          >
-            {diaMes(d.date)}
-          </text>
-        ) : null,
-      )}
-    </svg>
-  );
-}
-
-/** Taxa de agendamento por dia — gráfico separado de propósito (nunca 2 eixos Y). */
-function GraficoTaxa({ daily }: { daily: Day[] }) {
-  const W = 980,
-    H = 190,
-    ML = 46,
-    MR = 8,
-    MT = 12,
-    MB = 26;
-  const pw = W - ML - MR,
-    ph = H - MT - MB;
-  const serie = daily.map((d) => taxa(d.agendou, d.leads));
-  const max = niceMax(Math.max(...serie, 1));
-  const step = daily.length > 1 ? pw / (daily.length - 1) : 0;
-  const x = (i: number) => ML + step * i;
-  const y = (v: number) => MT + ph * (1 - v / max);
-  const pts = serie.map((v, i) => `${x(i)},${y(v)}`).join("L");
-  const ticks = [0, max / 2, max];
-  const passo = Math.max(1, Math.ceil(daily.length / 12));
-  const ultimo = daily.length - 1;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full"
-      role="img"
-      aria-label="Taxa de agendamento por dia"
-    >
-      {ticks.map((t) => (
-        <g key={t}>
-          <line
-            x1={ML}
-            x2={W - MR}
-            y1={y(t)}
-            y2={y(t)}
-            stroke={t === 0 ? "var(--color-border)" : "var(--color-surface-2)"}
-            strokeWidth="1"
-          />
-          <text
-            x={ML - 8}
-            y={y(t) + 3.5}
-            textAnchor="end"
-            className="fill-[var(--color-muted-2)] text-[10px] tabular-nums"
-          >
-            {t.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%
-          </text>
-        </g>
-      ))}
-      <path
-        d={`M${x(0)},${y(0)}L${pts}L${x(ultimo)},${y(0)}Z`}
-        fill="var(--color-stage-3)"
-        fillOpacity="0.12"
-      />
-      <path
-        d={`M${pts}`}
-        fill="none"
-        stroke="var(--color-stage-3)"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      {daily.map((d, i) => {
-        const fraco = d.leads < N_BAIXO;
-        if (!fraco && i !== ultimo) return null;
-        return (
-          <circle
-            key={d.date}
-            cx={x(i)}
-            cy={y(serie[i])}
-            r={i === ultimo ? 4.5 : 3.5}
-            fill={fraco ? "var(--color-surface)" : "var(--color-stage-3)"}
-            stroke={fraco ? "var(--color-stage-3)" : "var(--color-surface)"}
-            strokeWidth="2"
-          >
-            <title>{`${fmtDate(d.date)} — ${pf(serie[i])}${fraco ? " (amostra pequena)" : ""}`}</title>
-          </circle>
-        );
-      })}
-      <text
-        x={x(ultimo) - 6}
-        y={y(serie[ultimo]) - 12}
-        textAnchor="end"
-        className="fill-[var(--color-text)] text-[12px] font-semibold tabular-nums"
-      >
-        {pf(serie[ultimo])}
-      </text>
-      {daily.map((d, i) =>
-        i % passo === 0 || i === ultimo ? (
-          <text
-            key={d.date}
-            x={x(i)}
-            y={H - 8}
-            textAnchor="middle"
-            className="fill-[var(--color-muted-2)] text-[10px]"
-          >
-            {diaMes(d.date)}
-          </text>
-        ) : null,
-      )}
-    </svg>
-  );
-}
-
-function TabelaDias({ daily }: { daily: Day[] }) {
-  return (
-    <details className="mt-3 text-[13px]">
-      <summary className="cursor-pointer py-1 text-xs text-[var(--color-muted)]">
-        Ver como tabela
-      </summary>
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-[11px] uppercase tracking-wide text-[var(--color-muted-2)]">
-              <th className="py-1.5 pr-3 text-left font-semibold">Dia</th>
-              <th className="px-3 py-1.5 text-right font-semibold">Entraram</th>
-              <th className="px-3 py-1.5 text-right font-semibold">Abandonaram</th>
-              <th className="px-3 py-1.5 text-right font-semibold">Terminaram</th>
-              <th className="px-3 py-1.5 text-right font-semibold">Agendaram</th>
-              <th className="py-1.5 pl-3 text-right font-semibold">Taxa</th>
-            </tr>
-          </thead>
-          <tbody>
-            {daily.map((d) => (
-              <tr key={d.date} className="border-t">
-                <td className="py-1.5 pr-3">{fmtDate(d.date)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{nf(d.leads)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{nf(d.abandonou)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{nf(d.terminou)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{nf(d.agendou)}</td>
-                <td className="py-1.5 pl-3 text-right tabular-nums">
-                  {pf(taxa(d.agendou, d.leads))}
-                  {d.leads < N_BAIXO && (
-                    <span className="text-[var(--color-muted-2)]"> · amostra pequena</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  );
-}
-
-function Funil({ f }: { f: Funnel }) {
-  const pctTerm = taxa(f.terminaram, f.iniciaram);
-  const pctAgend = taxa(f.agendaram, f.iniciaram);
-  const pctAgendDosTerm = taxa(f.agendaram, f.terminaram);
-  const linha = (nome: string, valor: number, largura: number, cor: string) => (
-    <div>
-      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-        <span className="text-[var(--color-muted)]">{nome}</span>
-        <span className="font-semibold tabular-nums">{nf(valor)}</span>
-      </div>
-      <div
-        className="h-5 rounded"
-        style={{ width: `${Math.max(largura, 0.6)}%`, background: cor }}
-      />
-    </div>
-  );
-  return (
-    <div className="flex flex-col gap-3.5">
-      {linha("Iniciaram o formulário", f.iniciaram, 100, "var(--color-stage-1)")}
-      <p className="text-[13px] text-[var(--color-muted)]">
-        <span aria-hidden className="mr-1.5 text-[10px]">
-          ▼
-        </span>
-        {pf(pctTerm)} terminaram
-        <span className="text-[var(--color-muted-2)]">
-          {" "}
-          · {nf(f.abandonaram)} desistiram no meio
-        </span>
-      </p>
-      {linha("Terminaram", f.terminaram, pctTerm, "var(--color-stage-2)")}
-      <p className="text-[13px] text-[var(--color-muted)]">
-        <span aria-hidden className="mr-1.5 text-[10px]">
-          ▼
-        </span>
-        {pf(pctAgendDosTerm)} dos que terminaram agendaram
-      </p>
-      {linha("Agendaram call", f.agendaram, pctAgend, "var(--color-stage-3)")}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
-}) {
-  const sp = await searchParams;
-  const period = resolvePeriod(sp);
-  const data = await getLeads(period);
-  const { funnel: f, anterior: a, daily } = data;
-  const temGrafico = daily.length >= MIN_DIAS_GRAFICO;
-
-  return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      <header className="flex flex-col gap-3">
+    <div className="flex flex-col gap-8 max-w-[1320px] mx-auto">
+      {/* 1. Cabeçalho e Filtro de Período */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[var(--color-line)] pb-6">
         <div>
-          <h1 className="text-2xl">Captação</h1>
-          <p className="text-sm text-[var(--color-muted)]">
-            Funil de inscrição por formulário e por origem.
-          </p>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-oak-light)] mb-1">
+            — Painel de Inteligência Executiva
+          </div>
+          <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-ink)]">
+            Partiu Empreender em números
+          </h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-[var(--color-mute)]">
+              Vendas, retenção e recompras com consolidação em tempo real.
+            </p>
+            <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
+            <AutoRefresh intervalMinutes={5} />
+          </div>
         </div>
 
         <FiltroPeriodo
           action="/"
           keys={RANGE_KEYS}
           labels={RANGE_LABEL}
-          activeKey={period.key}
-          fromDate={period.fromDate}
-          toDate={period.toDate}
+          activeKey={activeKey}
+          fromDate={from ?? null}
+          toDate={to ?? null}
         />
-
-        <p className="text-sm text-[var(--color-muted)]">
-          {period.fromDate && period.toDate
-            ? `${fmtDate(period.fromDate)} a ${fmtDate(period.toDate)} · fuso de São Paulo`
-            : "Todo o histórico"}
-        </p>
-      </header>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label="Iniciaram o formulário" valor={nf(f.iniciaram)}>
-          {a && <Delta atual={f.iniciaram} anterior={a.iniciaram} />}
-        </Tile>
-        <Tile label="Terminaram" valor={nf(f.terminaram)}>
-          {a && <Delta atual={f.terminaram} anterior={a.terminaram} />}
-        </Tile>
-        <Tile label="Agendaram call" valor={nf(f.agendaram)}>
-          {a && <Delta atual={f.agendaram} anterior={a.agendaram} />}
-        </Tile>
-        <Tile label="Taxa de agendamento" valor={pf(taxa(f.agendaram, f.iniciaram))}>
-          {a && (
-            <Delta
-              pp
-              atual={taxa(f.agendaram, f.iniciaram)}
-              anterior={taxa(a.agendaram, a.iniciaram)}
-            />
-          )}
-        </Tile>
       </div>
 
-      {temGrafico && (
-        <>
-          <Card
-            title="Dia a dia, por estágio"
-            sub="A altura é quanta gente entrou; a divisão é onde parou."
-          >
-            <div className="mb-4 flex flex-wrap items-center gap-4 text-[13px] text-[var(--color-muted)]">
-              {[
-                ["var(--color-stage-3)", "Agendou call"],
-                ["var(--color-stage-2)", "Terminou, não agendou"],
-                ["var(--color-stage-1)", "Abandonou no meio"],
-              ].map(([cor, nome]) => (
-                <span key={nome} className="flex items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="size-2.5 rounded-[3px]"
-                    style={{ background: cor }}
-                  />
-                  {nome}
-                </span>
-              ))}
-            </div>
-            <GraficoDiario daily={daily} />
-            <TabelaDias daily={daily} />
-          </Card>
+      {/* 2. Barra de Síntese (Top KPIs) */}
+      <section className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+            01 / 05 · Síntese de Receita e Alunos
+          </span>
+        </div>
 
-          <Card
-            title="Taxa de agendamento por dia"
-            sub="Gráfico separado do volume de propósito — duas escalas num eixo só inventam correlação que não existe no dado."
-          >
-            <GraficoTaxa daily={daily} />
-            <p className="mt-3 text-[13px] text-[var(--color-muted)]">
-              Pontos vazados são dias com menos de {N_BAIXO} leads: a taxa oscila por falta
-              de gente, não por desempenho.
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Tile label="Faturamento Bruto" valor={cf(synthesis.faturamentoBruto, true)}>
+            <span className="text-xs text-[var(--color-mute)]">
+              {nf(synthesis.totalTransacoes)} vendas aprovadas
+            </span>
+          </Tile>
+
+          <Tile label="Faturamento Líquido" valor={cf(synthesis.faturamentoLiquido, true)}>
+            <span className="text-xs font-medium text-[var(--color-good)]">
+              Efetivo em caixa
+            </span>
+          </Tile>
+
+          <Tile label="Taxa Hotmart Total" valor={cf(synthesis.taxaHotmartTotal, true)}>
+            <span className="text-xs text-[var(--color-mute)]">
+              {pf(synthesis.pctTaxaHotmart)} da receita bruta
+            </span>
+          </Tile>
+
+          <Tile label="Ticket Médio (Bruto)" valor={cf(synthesis.ticketMedioBruto)}>
+            <span className="text-xs text-[var(--color-mute)]">
+              Mediana: {cf(synthesis.ticketMedianoBruto)}
+            </span>
+          </Tile>
+
+          <Tile label="Clientes Únicos" valor={nf(synthesis.clientesUnicos)}>
+            <span className="text-xs text-[var(--color-mute)]">
+              {nf(synthesis.recompradores)} recompradores
+            </span>
+          </Tile>
+
+          <Tile label="Taxa de Recompra" valor={pf(synthesis.taxaRecompra)}>
+            <span className="text-xs font-semibold text-[var(--color-oak)]">
+              LTV Médio: {cf(synthesis.ltvMedioBruto)}
+            </span>
+          </Tile>
+        </div>
+      </section>
+
+      {/* 3. Cenários: Compra Única vs. Recompra (Onde está o dinheiro) */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+              02 / 05 · Comportamento de Compra
+            </span>
+            <h2 className="font-heading text-xl font-bold text-[var(--color-ink)] mt-0.5">
+              Compra única vs Recompra: o salto
+            </h2>
+            <p className="text-sm text-[var(--color-mute)]">
+              A diferença de comportamento entre clientes de 1ª compra e recompradores (2ª+).
             </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Cenário A */}
+          <div className="flex flex-col justify-between rounded-xl border border-[var(--color-line-strong)] bg-white p-6 shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
+            <div>
+              <div className="flex items-center justify-between border-b border-[var(--color-line)] pb-3">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)]">
+                  Cenário A · Porta de Entrada
+                </span>
+                <span className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider font-medium text-[var(--color-mute)]">
+                  1ª Compra
+                </span>
+              </div>
+              <h3 className="mt-3 font-heading text-2xl font-bold text-[var(--color-ink)]">Compras Únicas</h3>
+              <p className="mt-1 text-xs text-[var(--color-mute)]">
+                Workshops sazonais e imersões de entrada para novos alunos.
+              </p>
+
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] truncate block">Transações</span>
+                  <p className="text-base sm:text-lg font-heading font-bold truncate text-[var(--color-ink)]">{nf(cenarioUnica.transacoes)}</p>
+                  <span className="text-xs text-[var(--color-mute)] truncate block">
+                    {pf(cenarioUnica.pctVolume)} do volume
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] truncate block">Receita Líquida</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-[var(--color-good)] whitespace-nowrap truncate" title={cf(cenarioUnica.receitaLiquida)}>
+                    {cf(cenarioUnica.receitaLiquida, true)}
+                  </p>
+                  <span className="text-xs text-[var(--color-mute)] whitespace-nowrap truncate block" title={`Bruto: ${cf(cenarioUnica.receitaBruta)}`}>
+                    Bruto: {cf(cenarioUnica.receitaBruta, true)}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] truncate block">Ticket Médio</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-[var(--color-ink)] whitespace-nowrap truncate" title={cf(cenarioUnica.ticketMedio)}>{cf(cenarioUnica.ticketMedio)}</p>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] truncate block">Ticket Mediano</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-[var(--color-ink)] whitespace-nowrap truncate" title={cf(cenarioUnica.ticketMediano)}>{cf(cenarioUnica.ticketMediano)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cenário B (Destaque DRYOS Oak estilo .eco-card.here) */}
+          <div className="flex flex-col justify-between rounded-xl border border-[var(--color-oak)] bg-[var(--color-oak)] p-6 shadow-md text-[var(--color-bg)]">
+            <div>
+              <div className="flex items-center justify-between border-b border-white/15 pb-3">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[#9DBFA8] font-medium">
+                  Cenário B · Onde Está o Dinheiro
+                </span>
+                <span className="rounded-full bg-[#E9EEE9] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider font-semibold text-[#1F3A2A]">
+                  Recompras (2ª+)
+                </span>
+              </div>
+              <h3 className="mt-3 font-heading text-2xl font-bold text-white !text-white">
+                Clientes que Recompraram
+              </h3>
+              <p className="mt-1 text-xs text-[#DCE6DD]">
+                Alunos recorrentes geram ticket médio até 83% maior e maior margem líquida.
+              </p>
+
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#9DBFA8] truncate block">Transações</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-white !text-white truncate">
+                    {nf(cenarioRecompra.transacoes)}
+                  </p>
+                  <span className="text-xs text-[#C8D6CB] truncate block">
+                    {pf(cenarioRecompra.pctVolume)} do volume
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#9DBFA8] truncate block">Receita Líquida</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-[#9DBFA8] whitespace-nowrap truncate" title={cf(cenarioRecompra.receitaLiquida)}>
+                    {cf(cenarioRecompra.receitaLiquida, true)}
+                  </p>
+                  <span className="text-xs text-[#C8D6CB] whitespace-nowrap truncate block" title={`Bruto: ${cf(cenarioRecompra.receitaBruta)}`}>
+                    Bruto: {cf(cenarioRecompra.receitaBruta, true)}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#9DBFA8] truncate block">Ticket Médio</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-white !text-white whitespace-nowrap truncate" title={cf(cenarioRecompra.ticketMedio)}>
+                    {cf(cenarioRecompra.ticketMedio)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#9DBFA8] truncate block">Ticket Mediano</span>
+                  <p className="text-base sm:text-lg font-heading font-bold text-white !text-white whitespace-nowrap truncate" title={cf(cenarioRecompra.ticketMediano)}>
+                    {cf(cenarioRecompra.ticketMediano)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Callout de Inteligência do PDF */}
+        <div className="rounded-xl border border-[var(--color-oak)]/20 bg-[var(--color-oak-tint)] p-4.5 text-sm text-[var(--color-ink)] leading-relaxed">
+          <span className="font-heading font-bold text-[var(--color-oak)]">
+            {pf(shareLiquidoRecompra)}
+          </span>{" "}
+          do faturamento líquido total vem de clientes que já tinham comprado antes — apesar de
+          representarem uma fatia menor das transações. Reter custa menos que adquirir e gera
+          faturamento com maior eficiência no caixa.
+        </div>
+      </section>
+
+      {/* 4. Produtos & Famílias de Produtos (Interativo por Clique) */}
+      <section className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+          03 / 05 · Mix de Produtos por Família
+        </span>
+        <Card
+          title="O que vende de verdade — por família"
+          sub="Produtos consolidados por família e edição. Clique em qualquer produto da tabela para abrir a listagem das vendas individuais."
+          wide
+        >
+          <ProductFamilyTable families={data.families} />
+        </Card>
+      </section>
+
+      {/* 5. Feed das 20 Últimas Vendas (Tempo Real) */}
+      <section className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+          04 / 05 · Feed de Transações em Tempo Real
+        </span>
+        <Card
+          title="Últimas 20 Vendas Registradas"
+          sub="Feed em tempo real das transações mais recentes recebidas via webhook."
+          wide
+        >
+          <LatestSalesFeed sales={data.latestSales} />
+        </Card>
+      </section>
+
+      {/* 6. Meios de Pagamento & Eficiência Líquida */}
+      <section className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+          05 / 05 · Operação Financeira e Meios de Pagamento
+        </span>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <Card
+            title="Eficiência por Meio de Pagamento"
+            sub="Quanto da receita bruta efetivamente vira faturamento líquido no caixa."
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] font-mono uppercase tracking-wider text-[var(--color-mute-soft)]">
+                    <th className="py-2.5 px-3">Meio</th>
+                    <th className="py-2.5 pr-3 text-right">Vendas</th>
+                    <th className="py-2.5 pr-3 text-right">Bruto</th>
+                    <th className="py-2.5 pr-3 text-right">Líquido</th>
+                    <th className="py-2.5 pr-3 text-right">Eficiência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--color-line)]">
+                  {data.payments.map((p) => (
+                    <tr key={p.method} className="hover:bg-[var(--color-surface)]/60 transition-colors">
+                      <td className="py-2.5 px-3 font-medium capitalize text-[var(--color-ink)]">{p.method}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(p.transacoes)}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">
+                        {cf(p.bruto)}
+                      </td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-semibold text-[var(--color-oak)] whitespace-nowrap">
+                        {cf(p.liquido)}
+                      </td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-medium">
+                        {pf(p.eficienciaPct)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
-        </>
-      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card title="Funil" sub={`${nf(f.iniciaram)} registros no período`} wide>
-          <Funil f={f} />
-        </Card>
+          <Card
+            title="Parcelamento no Cartão de Crédito"
+            sub="Distribuição da escolha de parcelas pelos compradores (1x à vista até 12x)."
+          >
+            <div className="flex flex-col gap-2">
+              <div className="space-y-2">
+                {data.installments
+                  .filter((inst) => inst.transacoes > 0)
+                  .map((inst) => {
+                    const maxTx = Math.max(
+                      ...data.installments.map((x) => x.transacoes),
+                      1,
+                    );
+                    const pctBar = (inst.transacoes / maxTx) * 100;
+                    const is12x = inst.installments === 12;
 
-        <Card
-          title="Por formulário"
-          sub={`${nf(data.byForm.distinct)} ${data.byForm.distinct === 1 ? "funil" : "funis"} no período · cada um é um funil separado`}
-          wide
-        >
-          <TabelaQuebra data={data.byForm} coluna="Formulário" />
-        </Card>
+                    return (
+                      <div key={inst.installments} className="flex items-center gap-3 text-xs">
+                        <span className="w-16 font-mono text-[var(--color-mute)]">
+                          {inst.installments === 1 ? "1x à vista" : `${inst.installments}x`}
+                        </span>
+                        <div className="flex-1 h-3 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              is12x ? "bg-[var(--color-clay)]" : "bg-[var(--color-oak)]"
+                            }`}
+                            style={{ width: `${pctBar}%` }}
+                          />
+                        </div>
+                        <span className="w-12 text-right font-mono font-medium text-[var(--color-ink)]">
+                          {nf(inst.transacoes)}
+                        </span>
+                        <span className="w-20 text-right font-mono text-[var(--color-mute)]">
+                          {cf(inst.bruto)}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
 
-        <Card title="Por país" sub={legenda(data.byGeo.pais)}>
-          <TabelaQuebra data={data.byGeo.pais} coluna="País" />
-        </Card>
+              {data.installments.every((x) => x.transacoes === 0) && (
+                <p className="py-6 text-center text-xs text-[var(--color-mute)]">
+                  Nenhuma venda com parcelamento registrada no período.
+                </p>
+              )}
 
-        <Card
-          title="Por região"
-          sub={`${legenda(data.byGeo.regiao)} · estado qualificado pelo país`}
-        >
-          <TabelaQuebra data={data.byGeo.regiao} coluna="Estado / região" />
-        </Card>
-
-        <Card
-          title="Origem — utm_source"
-          sub={legenda(data.byUtm.source)}
-          wide
-        >
-          <TabelaQuebra data={data.byUtm.source} coluna="utm_source" />
-        </Card>
-
-        <Card
-          title="Conteúdo — utm_content"
-          sub={legenda(data.byUtm.content)}
-          wide
-        >
-          <TabelaQuebra data={data.byUtm.content} coluna="utm_content" />
-        </Card>
-
-        <Card title="Mídia — utm_medium" sub={legenda(data.byUtm.medium)} wide>
-          <TabelaQuebra data={data.byUtm.medium} coluna="utm_medium" />
-        </Card>
-
-        <Card title="Campanha — utm_campaign" sub={legenda(data.byUtm.campaign)} wide>
-          <TabelaQuebra data={data.byUtm.campaign} coluna="utm_campaign" />
-        </Card>
-
-        <Card title="Termo — utm_term" sub={legenda(data.byUtm.term)} wide>
-          <TabelaQuebra data={data.byUtm.term} coluna="utm_term" />
-        </Card>
-      </div>
+              <div className="mt-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3 text-xs text-[var(--color-ink-soft)] leading-relaxed">
+                💡 <strong>Insight Operacional:</strong> Vendas em 12x geram juros de parcelamento
+                retidos pela operadora. Incentivar pagamentos à vista (Pix) ou parcelamento menor (4x–6x)
+                aumenta a margem líquida direta no caixa.
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
     </div>
   );
 }
-

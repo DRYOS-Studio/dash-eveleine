@@ -12,3 +12,4 @@ next-env.d.ts
 .tlc
 *.tsbuildinfo
 .env*
+/.open-next
