@@ -369,6 +369,7 @@ export type LeadOrigem = {
   form: string;
   utmSource: string;
   pais: string;
+  score: number | null;
 };
 
 type OrigemRow = {
@@ -377,6 +378,7 @@ type OrigemRow = {
   form_name: string | null;
   utm_source: string | null;
   pais: string | null;
+  score: number | null;
 };
 
 const ORIGEM_COLS = [
@@ -385,6 +387,7 @@ const ORIGEM_COLS = [
   COL.formName,
   "utm_source",
   GEO_COLS[0],
+  "score",
 ].join(", ");
 
 /**
@@ -419,6 +422,7 @@ export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>
           (r.form_name || r.form_id || "(sem nome)").trim(),
         utmSource: (r.utm_source || "").trim() || "(não informado)",
         pais: (r.pais || "").trim() || "(não informado)",
+        score: typeof r.score === "number" ? r.score : null,
       });
     }
     if (batch.length < PAGE) break;

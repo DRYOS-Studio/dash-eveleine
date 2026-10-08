@@ -165,9 +165,13 @@ export type Agenda = {
   /** Quem puxou o cancelamento: o time ou a própria lead. */
   canceladasPeloHost: number;
   canceladasPeloLead: number;
+  score10: number;
+  score3: number;
+  scoreOutros: number;
   daily: DiaAgenda[];
   byAgenda: QuebraAgenda;
   byHost: QuebraAgenda;
+  byScore: QuebraAgenda;
   byForm: QuebraAgenda;
   byUtm: QuebraAgenda;
   /** Reuniões sem linha correspondente no banco de leads. */
@@ -238,6 +242,7 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
 
   const mapAgenda = new Map<string, LinhaAgenda>();
   const mapHost = new Map<string, LinhaAgenda>();
+  const mapScore = new Map<string, LinhaAgenda>();
   const mapForm = new Map<string, LinhaAgenda>();
   const mapUtm = new Map<string, LinhaAgenda>();
   const mapDia = new Map<string, DiaAgenda>();
@@ -246,6 +251,9 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
   let canceladasPeloHost = 0;
   let canceladasPeloLead = 0;
   let semLead = 0;
+  let score10 = 0;
+  let score3 = 0;
+  let scoreOutros = 0;
 
   for (const e of eventos) {
     const cancelada = e.status === "canceled";
@@ -256,7 +264,24 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     }
 
     const origem = porUuid.get(uuidDe(e.uri));
-    if (!origem) semLead++;
+    if (!origem) {
+      semLead++;
+      bump(mapScore, SEM_LEAD, cancelada);
+    } else {
+      if (origem.score === 10) {
+        score10++;
+        bump(mapScore, "Score 10", cancelada);
+      } else if (origem.score === 3) {
+        score3++;
+        bump(mapScore, "Score 3", cancelada);
+      } else if (origem.score !== null) {
+        scoreOutros++;
+        bump(mapScore, `Score ${origem.score}`, cancelada);
+      } else {
+        scoreOutros++;
+        bump(mapScore, "(sem score)", cancelada);
+      }
+    }
 
     bump(mapAgenda, agendaDe(e), cancelada);
     bump(mapHost, hostDe(e), cancelada);
@@ -276,9 +301,13 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     canceladas,
     canceladasPeloHost,
     canceladasPeloLead,
+    score10,
+    score3,
+    scoreOutros,
     daily: [...mapDia.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byAgenda: cortar(mapAgenda),
     byHost: cortar(mapHost),
+    byScore: cortar(mapScore),
     byForm: cortar(mapForm),
     byUtm: cortar(mapUtm),
     semLead,
@@ -296,6 +325,7 @@ export type Reuniao = {
   host: string;
   situacao: Situacao;
   origem: string;
+  score?: number | null;
   /** Só quando cancelada: quem cancelou e por quê. */
   canceladaPor?: "host" | "invitee";
   motivo?: string | null;
@@ -393,6 +423,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
       host,
       situacao: situacaoDe(e, agora, falta),
       origem: porUuid.get(uuid)?.form ?? SEM_LEAD,
+      score: porUuid.get(uuid)?.score ?? null,
       canceladaPor: e.cancellation?.canceler_type,
       motivo: e.cancellation?.reason,
     });

@@ -6,7 +6,7 @@ Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-alt
 - **`/` — Captação:** funil de inscrição (quantos iniciaram, terminaram, agendaram call),
   com quebra por formulário, geografia e UTM. Fonte: Supabase.
 - **`/agenda` — Agenda:** o que acontece *depois* do agendamento — reuniões do dia,
-  no-show, cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly, enriquecida
+  qualificação por score (Score 10 e Score 3), no-show, cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly, enriquecida
   pelo Supabase.
 
 A definição de cada indicador — numerador, denominador e o que fica de fora — está no

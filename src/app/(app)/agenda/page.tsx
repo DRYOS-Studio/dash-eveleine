@@ -57,6 +57,38 @@ function Selo({ s }: { s: Situacao }) {
   );
 }
 
+function SeloScore({ score }: { score?: number | null }) {
+  if (score === 10) {
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-[#2c2214] text-[#e8d360] border border-[#7a5e1d]/50">
+        Score 10
+      </span>
+    );
+  }
+  if (score === 3) {
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-[#1a2824] text-[#2bbf90] border border-[#1b6b52]/50">
+        Score 3
+      </span>
+    );
+  }
+  if (score === 0) {
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-normal bg-[var(--color-surface-2)] text-[var(--color-muted-2)]">
+        Score 0
+      </span>
+    );
+  }
+  if (typeof score === "number") {
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] bg-[var(--color-surface-2)] text-[var(--color-muted)]">
+        Score {score}
+      </span>
+    );
+  }
+  return <span className="text-[11px] text-[var(--color-muted-2)]">—</span>;
+}
+
 /** Quebra da camada 1: volume + cancelamento. Presença fica na camada 2. */
 function TabelaQuebra({ data, coluna }: { data: QuebraAgenda; coluna: string }) {
   if (data.rows.length === 0) {
@@ -255,6 +287,7 @@ function ListaReunioes({ reunioes }: { reunioes: Reuniao[] }) {
           <col className="w-[5.5rem]" />
           <col className="w-[4rem]" />
           <col />
+          <col className="w-[5.5rem]" />
           <col />
           <col className="w-[9rem]" />
           <col className="w-[10rem]" />
@@ -265,6 +298,7 @@ function ListaReunioes({ reunioes }: { reunioes: Reuniao[] }) {
             <th className="py-1.5 pr-3 text-left font-semibold">Dia</th>
             <th className="px-3 py-1.5 text-left font-semibold">Hora</th>
             <th className="px-3 py-1.5 text-left font-semibold">Quem</th>
+            <th className="px-3 py-1.5 text-left font-semibold">Score</th>
             <th className="px-3 py-1.5 text-left font-semibold">Agenda</th>
             <th className="px-3 py-1.5 text-left font-semibold">Anfitrião</th>
             <th className="px-3 py-1.5 text-left font-semibold">Origem</th>
@@ -278,6 +312,9 @@ function ListaReunioes({ reunioes }: { reunioes: Reuniao[] }) {
               <td className="px-3 py-2 tabular-nums whitespace-nowrap">{horaSP(r.inicio)}</td>
               <td className="truncate px-3 py-2" title={r.quem}>
                 {r.quem}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap">
+                <SeloScore score={r.score} />
               </td>
               <td className="truncate px-3 py-2" title={r.agenda}>
                 {r.agenda}
@@ -543,6 +580,29 @@ export default async function Page({
         />
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile label="Score 10" valor={nf(a.score10)}>
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {a.total ? pf(taxa(a.score10, a.total)) : "0,0%"} das marcadas · alta renda
+          </span>
+        </Tile>
+        <Tile label="Score 3" valor={nf(a.score3)}>
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {a.total ? pf(taxa(a.score3, a.total)) : "0,0%"} das marcadas · renda média
+          </span>
+        </Tile>
+        <Tile label="Score 0 / outros" valor={nf(a.scoreOutros)}>
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {a.total ? pf(taxa(a.scoreOutros, a.total)) : "0,0%"} das marcadas · baixa renda
+          </span>
+        </Tile>
+        <Tile label="Fora do funil" valor={nf(a.semLead)}>
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {a.total ? pf(taxa(a.semLead, a.total)) : "0,0%"} sem lead no banco
+          </span>
+        </Tile>
+      </div>
+
       {a.total === 0 ? (
         <Card title="Nenhuma reunião nesta janela" sub="Troque o período acima.">
           <p className="text-sm text-[var(--color-muted)]">
@@ -581,6 +641,10 @@ export default async function Page({
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
+            <Card title="Por score" sub={legenda(a.byScore, "nível", "níveis")} wide>
+              <TabelaQuebra data={a.byScore} coluna="Score de qualificação" />
+            </Card>
+
             <Card title="Por agenda" sub={legenda(a.byAgenda, "tipo de reunião", "tipos de reunião")}>
               <TabelaQuebra data={a.byAgenda} coluna="Agenda" />
             </Card>
