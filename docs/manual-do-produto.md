@@ -88,16 +88,14 @@ aparece como mais uma reunião marcada.
 
 ## Agenda — qualificação por score
 
-A segunda faixa de quatro números detalha o perfil financeiro/qualificação dos leads que agendaram reunião, cruzando o identificador do Calendly com a resposta do formulário no Supabase.
+A segunda faixa de dois números detalha o volume de reuniões qualificadas por perfil financeiro, cruzando o identificador do Calendly com a resposta do formulário no Supabase. Leads com Score 0 não são exibidos pois não qualificam para agendamento.
 
 | Indicador | O que conta | Perfil do Lead |
 | --- | --- | --- |
 | Score 10 | Reuniões marcadas por leads com Score 10 | **Alta renda**: renda individual ≥ R$ 5.000 ou familiar ≥ R$ 8.000 |
 | Score 3 | Reuniões marcadas por leads com Score 3 | **Renda média**: individual de R$ 2.500 a R$ 6.000 ou familiar até R$ 5.000 |
-| Score 0 / outros | Reuniões marcadas por leads com Score 0 ou incompleto | **Baixa renda**: até R$ 2.500 ou que desistiram no meio do formulário |
-| Fora do funil | Reuniões sem registro no banco de leads | Agendamentos por link direto ou remarcações |
 
-A soma dos quatro fecha exatamente no total de **Reuniões marcadas**. Cada card exibe a fatia percentual que o grupo representa sobre o volume total da janela.
+Cada card exibe a fatia percentual que o grupo representa sobre o volume total de reuniões marcadas da janela.
 
 ---
 
@@ -201,8 +199,6 @@ Quatro limites conhecidos, para ninguém tomar decisão em cima de coisa que a d
 | Agenda | Taxa de cancelamento | Canceladas ÷ Marcadas |
 | Agenda | Score 10 | Reuniões vinculadas a lead com score 10 (alta renda) |
 | Agenda | Score 3 | Reuniões vinculadas a lead com score 3 (renda média) |
-| Agenda | Score 0 / outros | Reuniões de leads com score 0 ou desqualificados |
-| Agenda | Fora do funil | Reuniões sem lead correspondente no banco |
 | Agenda | Já aconteceram | Não canceladas que já terminaram |
 | Agenda | Compareceram | Já aconteceram − no-show |
 | Agenda | No-show | Falta marcada à mão no Calendly |

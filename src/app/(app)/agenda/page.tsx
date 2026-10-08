@@ -72,20 +72,6 @@ function SeloScore({ score }: { score?: number | null }) {
       </span>
     );
   }
-  if (score === 0) {
-    return (
-      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-normal bg-[var(--color-surface-2)] text-[var(--color-muted-2)]">
-        Score 0
-      </span>
-    );
-  }
-  if (typeof score === "number") {
-    return (
-      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] bg-[var(--color-surface-2)] text-[var(--color-muted)]">
-        Score {score}
-      </span>
-    );
-  }
   return <span className="text-[11px] text-[var(--color-muted-2)]">—</span>;
 }
 
@@ -580,7 +566,7 @@ export default async function Page({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Tile label="Score 10" valor={nf(a.score10)}>
           <span className="text-xs text-[var(--color-muted-2)]">
             {a.total ? pf(taxa(a.score10, a.total)) : "0,0%"} das marcadas · alta renda
@@ -589,16 +575,6 @@ export default async function Page({
         <Tile label="Score 3" valor={nf(a.score3)}>
           <span className="text-xs text-[var(--color-muted-2)]">
             {a.total ? pf(taxa(a.score3, a.total)) : "0,0%"} das marcadas · renda média
-          </span>
-        </Tile>
-        <Tile label="Score 0 / outros" valor={nf(a.scoreOutros)}>
-          <span className="text-xs text-[var(--color-muted-2)]">
-            {a.total ? pf(taxa(a.scoreOutros, a.total)) : "0,0%"} das marcadas · baixa renda
-          </span>
-        </Tile>
-        <Tile label="Fora do funil" valor={nf(a.semLead)}>
-          <span className="text-xs text-[var(--color-muted-2)]">
-            {a.total ? pf(taxa(a.semLead, a.total)) : "0,0%"} sem lead no banco
           </span>
         </Tile>
       </div>

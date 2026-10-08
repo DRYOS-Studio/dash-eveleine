@@ -167,7 +167,6 @@ export type Agenda = {
   canceladasPeloLead: number;
   score10: number;
   score3: number;
-  scoreOutros: number;
   daily: DiaAgenda[];
   byAgenda: QuebraAgenda;
   byHost: QuebraAgenda;
@@ -253,7 +252,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
   let semLead = 0;
   let score10 = 0;
   let score3 = 0;
-  let scoreOutros = 0;
 
   for (const e of eventos) {
     const cancelada = e.status === "canceled";
@@ -266,7 +264,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     const origem = porUuid.get(uuidDe(e.uri));
     if (!origem) {
       semLead++;
-      bump(mapScore, SEM_LEAD, cancelada);
     } else {
       if (origem.score === 10) {
         score10++;
@@ -274,12 +271,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
       } else if (origem.score === 3) {
         score3++;
         bump(mapScore, "Score 3", cancelada);
-      } else if (origem.score !== null) {
-        scoreOutros++;
-        bump(mapScore, `Score ${origem.score}`, cancelada);
-      } else {
-        scoreOutros++;
-        bump(mapScore, "(sem score)", cancelada);
       }
     }
 
@@ -303,7 +294,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     canceladasPeloLead,
     score10,
     score3,
-    scoreOutros,
     daily: [...mapDia.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byAgenda: cortar(mapAgenda),
     byHost: cortar(mapHost),
