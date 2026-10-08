@@ -617,10 +617,6 @@ export default async function Page({
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Card title="Por score" sub={legenda(a.byScore, "nível", "níveis")} wide>
-              <TabelaQuebra data={a.byScore} coluna="Score de qualificação" />
-            </Card>
-
             <Card title="Por agenda" sub={legenda(a.byAgenda, "tipo de reunião", "tipos de reunião")}>
               <TabelaQuebra data={a.byAgenda} coluna="Agenda" />
             </Card>

@@ -146,8 +146,7 @@ uma leitura do **mesmo** conjunto — elas não se somam entre si.
 
 - **Captação:** por funil (cada formulário é um funil separado), por país, por região e
   pelos cinco UTMs — origem, conteúdo, mídia, campanha e termo.
-- **Agenda:** por score (nível de qualificação do lead), por tipo de agenda, por anfitrião, pelo formulário de origem e por
-  `utm_source`.
+- **Agenda:** por tipo de agenda, por anfitrião, pelo formulário de origem e por `utm_source`.
 
 Três convenções valem em todas elas:
 

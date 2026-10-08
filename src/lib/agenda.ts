@@ -170,7 +170,6 @@ export type Agenda = {
   daily: DiaAgenda[];
   byAgenda: QuebraAgenda;
   byHost: QuebraAgenda;
-  byScore: QuebraAgenda;
   byForm: QuebraAgenda;
   byUtm: QuebraAgenda;
   /** Reuniões sem linha correspondente no banco de leads. */
@@ -241,7 +240,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
 
   const mapAgenda = new Map<string, LinhaAgenda>();
   const mapHost = new Map<string, LinhaAgenda>();
-  const mapScore = new Map<string, LinhaAgenda>();
   const mapForm = new Map<string, LinhaAgenda>();
   const mapUtm = new Map<string, LinhaAgenda>();
   const mapDia = new Map<string, DiaAgenda>();
@@ -267,10 +265,8 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     } else {
       if (origem.score === 10) {
         score10++;
-        bump(mapScore, "Score 10", cancelada);
       } else if (origem.score === 3) {
         score3++;
-        bump(mapScore, "Score 3", cancelada);
       }
     }
 
@@ -297,7 +293,6 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     daily: [...mapDia.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byAgenda: cortar(mapAgenda),
     byHost: cortar(mapHost),
-    byScore: cortar(mapScore),
     byForm: cortar(mapForm),
     byUtm: cortar(mapUtm),
     semLead,
