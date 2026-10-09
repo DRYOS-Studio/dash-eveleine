@@ -23,7 +23,9 @@
 - `bruto` = valor PAGO pelo comprador (com juros de parcelamento). Os juros não são do produtor e NÃO são exibidos.
 - Dash usa `preco_oferta` como faturamento e `taxa_hotmart_exata` como taxa. `taxa_hotmart` (bruto − líquido) é legado e não deve ser exibida: mistura juros, comissões de terceiros e taxa.
 - Identidade (vendas BRL): `bruto = (bruto − preco_oferta) + taxa_hotmart_exata + outras_comissoes + liquido`.
-- Taxa Hotmart ≈ 9–10% da oferta, igual à vista ou parcelado. Co-produção reduz o líquido (`outras_comissoes`), não a taxa.
+- A taxa é `oferta × % + fixo` com faixas que mudam no tempo (vistas em 2026-10-09: 9,9%+R$1 em 2024; 8,4%+R$1 desde 2025-06; 8,9%+R$1 desde 2026-09; 20% sem fixo nas ofertas ≤ R$ 10).
+  Média ~9,3% da oferta; parcelar não altera a taxa. Co-produção reduz o líquido (`outras_comissoes`), não a taxa.
+- O banco não guarda o percentual: o `/financeiro` classifica a faixa pelos valores (`FAIXAS_TAXA` em `sales-data.ts`). Nova combinação da Hotmart aparece como "Outra combinação" — adicionar a faixa na lista.
 - Vendas em moeda estrangeira entram convertidas para BRL (`fonte_taxa = 'api_fx'`, valores já em BRL; a moeda original fica em `moeda`).
   Líquido = valor recebido em reais do relatório de vendas (CSV) da Hotmart — não existe na API. Estrangeiras sem isso ficam fora, com aviso.
   Para converter novas: exportar o CSV de vendas e rodar `scripts/backfill-foreign-sales.js <csv>` (dry-run por padrão).

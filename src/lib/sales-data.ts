@@ -156,12 +156,47 @@ export type FinancialTransactionItem = {
   is_recompra: boolean;
 };
 
+export type TaxaFaixa = {
+  /** Rótulo da faixa, ex.: "8,4% + R$ 1,00". */
+  label: string;
+  pct: number | null;
+  vendas: number;
+  oferta: number;
+  taxa: number;
+  taxaPct: number; // taxa efetiva ÷ faturamento
+  ofertaMin: number;
+  ofertaMax: number;
+  primeira: string; // approved_at
+  ultima: string;
+};
+
+export type TaxaPorPreco = {
+  faixa: string;
+  vendas: number;
+  oferta: number;
+  taxa: number;
+  taxaPct: number;
+};
+
+export type TaxaPorProduto = {
+  family: string;
+  vendas: number;
+  oferta: number;
+  taxa: number;
+  ofertaMin: number;
+  ofertaMax: number;
+};
+
 export type FinancialData = {
   synthesis: FinancialSynthesisMetrics;
   paymentMethods: FinancialPaymentMethod[];
   parceladoHotmart: ParceladoHotmartMetric;
   cardInstallments: CardInstallmentDetail[];
   transactions: FinancialTransactionItem[];
+  taxaFaixas: TaxaFaixa[];
+  taxaPorPreco: TaxaPorPreco[];
+  /** Produtos na faixa de maior percentual; null se o período só tem uma faixa. */
+  produtosFaixaMaior: { label: string; produtos: TaxaPorProduto[] } | null;
   from: string | null;
   to: string;
   currentRange: RangeKey;
@@ -598,6 +633,31 @@ export async function getProductSalesDetail(
   return { sales, total: count ?? sales.length };
 }
 
+// Combinações percentual + valor fixo que a API da Hotmart informou nas vendas (hotmart_fee).
+// A faixa de cada venda é derivada dos valores: oferta × % + fixo = taxa (o banco não guarda o percentual).
+const FAIXAS_TAXA = [
+  { pct: 20, fixa: 0 },
+  { pct: 8.4, fixa: 1 },
+  { pct: 8.9, fixa: 1 },
+  { pct: 9.9, fixa: 1 },
+];
+
+function faixaDaTaxa(oferta: number, taxa: number) {
+  return FAIXAS_TAXA.find((f) => Math.abs(Math.round((oferta * f.pct) / 100 * 100) / 100 + f.fixa - taxa) < 0.006);
+}
+
+const brPct = (n: number) => String(n).replace(".", ",");
+const labelFaixa = (f: { pct: number; fixa: number }) =>
+  f.fixa > 0 ? `${brPct(f.pct)}% + R$ ${f.fixa.toFixed(2).replace(".", ",")}` : `${brPct(f.pct)}% (sem valor fixo)`;
+
+const FAIXAS_PRECO: Array<[string, (o: number) => boolean]> = [
+  ["Até R$ 10", (o) => o <= 10],
+  ["R$ 10 a R$ 30", (o) => o > 10 && o <= 30],
+  ["R$ 30 a R$ 100", (o) => o > 30 && o <= 100],
+  ["R$ 100 a R$ 500", (o) => o > 100 && o <= 500],
+  ["Acima de R$ 500", (o) => o > 500],
+];
+
 /**
  * Consulta e agrega métricas financeiras detalhadas para a página /financeiro:
  * - Síntese de Caixa & Retenção
@@ -632,6 +692,11 @@ export async function getFinancialData(
   let parceladoCount = 0;
 
   const transactions: FinancialTransactionItem[] = [];
+
+  type FaixaAcc = { label: string; pct: number | null; vendas: number; oferta: number; taxa: number; min: number; max: number; primeira: string; ultima: string };
+  const faixaMap = new Map<string, FaixaAcc>();
+  const precoMap = new Map<string, { vendas: number; oferta: number; taxa: number }>();
+  const produtoPorFaixa = new Map<string, Map<string, { vendas: number; oferta: number; taxa: number; min: number; max: number }>>();
 
   for (const r of rawRows) {
     const m = money(r);
@@ -681,6 +746,47 @@ export async function getFinancialData(
       parData.liquido += liquido;
       parData.taxa += taxa;
       parceladoMap.set(n, parData);
+    }
+
+    // Faixa de taxa: BRL classificado pelos valores; convertidas e sem decomposição ficam em linhas à parte.
+    const foreign = r.moeda && r.moeda !== "BRL";
+    const f = !foreign && m.decomposta ? faixaDaTaxa(bruto, taxa) : undefined;
+    const faixaKey = foreign ? "fx" : !m.decomposta ? "sem" : f ? `${f.pct}` : "outra";
+    const faixaLabel = foreign
+      ? "Moeda estrangeira (convertida para R$)"
+      : !m.decomposta
+        ? "Sem taxa exata"
+        : f
+          ? labelFaixa(f)
+          : "Outra combinação";
+    const fa = faixaMap.get(faixaKey) || {
+      label: faixaLabel, pct: f ? f.pct : null, vendas: 0, oferta: 0, taxa: 0,
+      min: Infinity, max: -Infinity, primeira: r.approved_at, ultima: r.approved_at,
+    };
+    fa.vendas += 1;
+    fa.oferta += bruto;
+    fa.taxa += taxa;
+    fa.min = Math.min(fa.min, bruto);
+    fa.max = Math.max(fa.max, bruto);
+    if (r.approved_at < fa.primeira) fa.primeira = r.approved_at;
+    if (r.approved_at > fa.ultima) fa.ultima = r.approved_at;
+    faixaMap.set(faixaKey, fa);
+
+    if (f) {
+      const fam = productFamilyMap.get(r.product_id) || r.product_name;
+      const pm = produtoPorFaixa.get(faixaKey) || new Map();
+      const pa = pm.get(fam) || { vendas: 0, oferta: 0, taxa: 0, min: Infinity, max: -Infinity };
+      pa.vendas += 1; pa.oferta += bruto; pa.taxa += taxa;
+      pa.min = Math.min(pa.min, bruto); pa.max = Math.max(pa.max, bruto);
+      pm.set(fam, pa);
+      produtoPorFaixa.set(faixaKey, pm);
+    }
+
+    if (m.decomposta && !foreign) {
+      const pr = FAIXAS_PRECO.find(([, test]) => test(bruto))![0];
+      const pa = precoMap.get(pr) || { vendas: 0, oferta: 0, taxa: 0 };
+      pa.vendas += 1; pa.oferta += bruto; pa.taxa += taxa;
+      precoMap.set(pr, pa);
     }
 
     if (transactions.length < 200) {
@@ -772,12 +878,49 @@ export async function getFinancialData(
     porParcela: porParcelaParcelado,
   };
 
+  const taxaFaixas: TaxaFaixa[] = [...faixaMap.values()]
+    .map((a) => ({
+      label: a.label,
+      pct: a.pct,
+      vendas: a.vendas,
+      oferta: a.oferta,
+      taxa: a.taxa,
+      taxaPct: a.oferta > 0 ? (a.taxa / a.oferta) * 100 : 0,
+      ofertaMin: a.min,
+      ofertaMax: a.max,
+      primeira: a.primeira,
+      ultima: a.ultima,
+    }))
+    .sort((a, b) => b.vendas - a.vendas);
+
+  const taxaPorPreco: TaxaPorPreco[] = FAIXAS_PRECO.map(([faixa]) => {
+    const a = precoMap.get(faixa);
+    return a ? { faixa, vendas: a.vendas, oferta: a.oferta, taxa: a.taxa, taxaPct: a.oferta > 0 ? (a.taxa / a.oferta) * 100 : 0 } : null;
+  }).filter((x): x is TaxaPorPreco => x !== null);
+
+  // Produtos na faixa de maior percentual (só se houver mais de uma faixa de percentual no período)
+  const comPct = taxaFaixas.filter((f) => f.pct !== null);
+  let produtosFaixaMaior: FinancialData["produtosFaixaMaior"] = null;
+  if (comPct.length > 1) {
+    const maior = comPct.reduce((x, y) => ((y.pct as number) > (x.pct as number) ? y : x));
+    const key = `${maior.pct}`;
+    produtosFaixaMaior = {
+      label: maior.label,
+      produtos: [...(produtoPorFaixa.get(key) || new Map()).entries()]
+        .map(([family, a]) => ({ family, vendas: a.vendas, oferta: a.oferta, taxa: a.taxa, ofertaMin: a.min, ofertaMax: a.max }))
+        .sort((a, b) => b.vendas - a.vendas),
+    };
+  }
+
   return {
     synthesis,
     paymentMethods,
     parceladoHotmart,
     cardInstallments,
     transactions,
+    taxaFaixas,
+    taxaPorPreco,
+    produtosFaixaMaior,
     from,
     to,
     currentRange: range,

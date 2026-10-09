@@ -35,6 +35,9 @@ type PageProps = {
   }>;
 };
 
+const dataBR = (iso: string) =>
+  new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "2-digit" });
+
 export default async function FinancialDashboardPage(props: PageProps) {
   const params = await props.searchParams;
   const range = (params.range as RangeKey) || "30";
@@ -43,6 +46,9 @@ export default async function FinancialDashboardPage(props: PageProps) {
   const data = await getFinancialData(range, from, to);
   const {
     synthesis,
+    taxaFaixas,
+    taxaPorPreco,
+    produtosFaixaMaior,
     paymentMethods,
     parceladoHotmart,
     cardInstallments,
@@ -91,7 +97,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-            01 / 04 · Síntese: Faturamento, Taxa e Líquido
+            01 / 05 · Síntese: Faturamento, Taxa e Líquido
           </span>
         </div>
 
@@ -137,7 +143,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
       {/* 3. Raio-X Completo de Meios de Pagamento */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          02 / 04 · Meios de Pagamento
+          02 / 05 · Meios de Pagamento
         </span>
         <Card
           title="Meios de pagamento"
@@ -218,10 +224,132 @@ export default async function FinancialDashboardPage(props: PageProps) {
         </Card>
       </section>
 
+      {/* 3. Como a taxa Hotmart é cobrada */}
+      <section className="flex flex-col gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+          03 / 05 · Como a Taxa Hotmart é Cobrada
+        </span>
+
+        <Card
+          title="Taxa por faixa de cobrança"
+          sub="Percentual + valor fixo de cada venda, identificado pelos valores (oferta × % + fixo = taxa). A taxa efetiva é a taxa ÷ faturamento da faixa."
+          wide
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] font-mono uppercase tracking-wider text-[var(--color-mute-soft)]">
+                  <th className="py-2.5 px-3">Faixa</th>
+                  <th className="py-2.5 pr-3 text-right">Vendas</th>
+                  <th className="py-2.5 pr-3 text-right">Faturamento</th>
+                  <th className="py-2.5 pr-3 text-right">Taxa Hotmart</th>
+                  <th className="py-2.5 pr-3 text-right">Taxa efetiva</th>
+                  <th className="py-2.5 pr-3 text-right">Oferta (mín – máx)</th>
+                  <th className="py-2.5 pr-3 text-right">Primeira venda</th>
+                  <th className="py-2.5 pr-3 text-right">Última venda</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-line)]">
+                {taxaFaixas.map((f) => (
+                  <tr key={f.label} className="hover:bg-[var(--color-surface)]/60 transition-colors">
+                    <td className="py-2.5 px-3 font-medium text-[var(--color-ink)]">{f.label}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(f.vendas)}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">{cf(f.oferta)}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-clay)] whitespace-nowrap">{cf(f.taxa)}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs font-medium">{pf(f.taxaPct)}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">
+                      {cf(f.ofertaMin)} – {cf(f.ofertaMax)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)]">{dataBR(f.primeira)}</td>
+                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)]">{dataBR(f.ultima)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-[var(--color-line-strong)] font-semibold">
+                  <td className="py-2.5 px-3">Total</td>
+                  <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(synthesis.totalTransacoes)}</td>
+                  <td className="py-2.5 pr-3 text-right font-mono text-xs whitespace-nowrap">{cf(synthesis.faturamentoBruto)}</td>
+                  <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-clay)] whitespace-nowrap">{cf(synthesis.retencaoTotal)}</td>
+                  <td className="py-2.5 pr-3 text-right font-mono text-xs">{pf(synthesis.pctRetencao)}</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
+
+        <div className={`grid grid-cols-1 gap-6 ${produtosFaixaMaior ? "lg:grid-cols-2" : ""}`}>
+          <Card
+            title="Taxa efetiva por faixa de preço"
+            sub="Taxa Hotmart ÷ faturamento por faixa de preço da oferta (vendas em reais com taxa exata)."
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] font-mono uppercase tracking-wider text-[var(--color-mute-soft)]">
+                    <th className="py-2.5 px-3">Preço da oferta</th>
+                    <th className="py-2.5 pr-3 text-right">Vendas</th>
+                    <th className="py-2.5 pr-3 text-right">Faturamento</th>
+                    <th className="py-2.5 pr-3 text-right">Taxa Hotmart</th>
+                    <th className="py-2.5 pr-3 text-right">Taxa efetiva</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--color-line)]">
+                  {taxaPorPreco.map((r) => (
+                    <tr key={r.faixa} className="hover:bg-[var(--color-surface)]/60 transition-colors">
+                      <td className="py-2.5 px-3 font-medium text-[var(--color-ink)]">{r.faixa}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(r.vendas)}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">{cf(r.oferta)}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-clay)] whitespace-nowrap">{cf(r.taxa)}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-medium">{pf(r.taxaPct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {produtosFaixaMaior && (
+            <Card
+              title={`Produtos na faixa de ${produtosFaixaMaior.label}`}
+              sub="Vendas do período na faixa de maior percentual, por família de produto."
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] font-mono uppercase tracking-wider text-[var(--color-mute-soft)]">
+                      <th className="py-2.5 px-3">Família de produto</th>
+                      <th className="py-2.5 pr-3 text-right">Vendas</th>
+                      <th className="py-2.5 pr-3 text-right">Faturamento</th>
+                      <th className="py-2.5 pr-3 text-right">Taxa Hotmart</th>
+                      <th className="py-2.5 pr-3 text-right">Oferta (mín – máx)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-line)]">
+                    {produtosFaixaMaior.produtos.map((r) => (
+                      <tr key={r.family} className="hover:bg-[var(--color-surface)]/60 transition-colors">
+                        <td className="py-2.5 px-3 font-medium text-[var(--color-ink)]">{r.family}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(r.vendas)}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">{cf(r.oferta)}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-clay)] whitespace-nowrap">{cf(r.taxa)}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">
+                          {cf(r.ofertaMin)} – {cf(r.ofertaMax)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      </section>
+
       {/* 4. Módulo Parcelado Hotmart & Curva de Juros de Cartão */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          03 / 04 · Parcelado Hotmart e Parcelamento no Cartão
+          04 / 05 · Parcelado Hotmart e Parcelamento no Cartão
         </span>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -375,7 +503,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
       {/* 5. Extrato de Transações */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          04 / 04 · Extrato de Vendas
+          05 / 05 · Extrato de Vendas
         </span>
         <Card
           title="Extrato de vendas"

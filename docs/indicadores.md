@@ -44,6 +44,9 @@ em instante anterior. Parcelas, repetições do mesmo produto e compras simultâ
 
 | Indicador | Conta |
 |---|---|
+| Taxa por faixa de cobrança | Cada venda em reais é classificada pela combinação percentual + fixo (`oferta × % + fixo = taxa`, tolerância de 1 centavo). Faixas conhecidas em `FAIXAS_TAXA` (`sales-data.ts`); fora delas aparece "Outra combinação". Convertidas e sem taxa exata ficam em linhas à parte; o total fecha com o card de Taxa Hotmart |
+| Taxa efetiva por faixa de preço | Taxa ÷ faturamento por faixa de preço da oferta (vendas em reais com taxa exata) |
+| Produtos na faixa de maior percentual | Vendas da faixa de maior percentual do período, por família (só aparece com mais de uma faixa) |
 | Taxa Hotmart % | Taxa Hotmart ÷ faturamento (por meio de pagamento e por nº de parcelas no cartão) |
 | Meios de pagamento | `payment_type` normalizado (`normalizePaymentMethod`); faturamento, taxa, outras comissões e líquido |
 | Parcelado Hotmart | Vendas com meio "Parcelado Hotmart". No banco cada venda é uma parcela; `installments` é o tamanho do plano |
