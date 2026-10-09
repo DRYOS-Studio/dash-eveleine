@@ -37,7 +37,7 @@ type PageProps = {
 
 export default async function SalesDashboardPage(props: PageProps) {
   const params = await props.searchParams;
-  const range = (params.range as RangeKey) || "all";
+  const range = (params.range as RangeKey) || "30";
   const { from, to } = params;
 
   const data = await getDashboardData(range, from, to);

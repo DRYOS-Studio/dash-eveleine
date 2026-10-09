@@ -19,13 +19,6 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (hasSession && pathname === "/login") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
-
   return NextResponse.next();
 }
 

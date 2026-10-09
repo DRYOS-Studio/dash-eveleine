@@ -36,7 +36,7 @@ type PageProps = {
 
 export default async function FinancialDashboardPage(props: PageProps) {
   const params = await props.searchParams;
-  const range = (params.range as RangeKey) || "all";
+  const range = (params.range as RangeKey) || "30";
   const { from, to } = params;
 
   const data = await getFinancialData(range, from, to);

@@ -274,23 +274,40 @@ export function resolveDateRange(
   return { from: start.toISOString(), to };
 }
 
-/** Carrega os dados analíticos completos para alimentar a Dashboard. */
-export async function getDashboardData(
-  range: RangeKey = "30",
-  customFrom?: string | null,
-  customTo?: string | null,
-): Promise<DashboardData> {
-  const { from, to } = resolveDateRange(range, customFrom, customTo);
+/** Carrega transações e metadados de produtos em paralelo com alta eficiência. */
+async function fetchTransactionsData(from: string | null, to: string) {
+  let countQuery = supabaseAdmin
+    .from("transactions")
+    .select("transaction_code", { count: "exact", head: true })
+    .eq("status", "APPROVED")
+    .lte("approved_at", to);
 
-  // Consulta transações no período com paginação automática (supera limite de 1.000 do PostgREST)
+  if (from) {
+    countQuery = countQuery.gte("approved_at", from);
+  }
+
+  const [countResult, productsResult] = await Promise.all([
+    countQuery,
+    supabaseAdmin.from("products").select("id, name, family, edition"),
+  ]);
+
+  if (countResult.error) throw countResult.error;
+
+  const total = countResult.count || 0;
+  const productFamilyMap = new Map<string, string>();
+  for (const p of productsResult.data || []) {
+    if (p.id) productFamilyMap.set(p.id, p.family || p.name);
+  }
+
+  if (total === 0) {
+    return { rawRows: [], productFamilyMap };
+  }
+
   const PAGE_SIZE = 1000;
-  const rawRows: any[] = [];
+  const numPages = Math.ceil(total / PAGE_SIZE);
 
-  for (let page = 0; ; page++) {
-    const fromIndex = page * PAGE_SIZE;
-    const toIndex = fromIndex + PAGE_SIZE - 1;
-
-    let pageQuery = supabaseAdmin
+  const pagePromises = Array.from({ length: numPages }, (_, page) => {
+    let q = supabaseAdmin
       .from("transactions")
       .select(`
         transaction_code,
@@ -306,43 +323,43 @@ export async function getDashboardData(
         payment_type,
         installments,
         purchase_sequence,
-        is_recompra,
-        days_since_first_purchase,
-        days_since_prev_purchase,
-        tracking_source,
-        utm_source,
-        utm_medium,
-        utm_campaign,
-        products (family, edition)
+        is_recompra
       `)
       .eq("status", "APPROVED")
       .lte("approved_at", to)
       .order("approved_at", { ascending: false })
-      .range(fromIndex, toIndex);
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
     if (from) {
-      pageQuery = pageQuery.gte("approved_at", from);
+      q = q.gte("approved_at", from);
     }
+    return q;
+  });
 
-    const { data: batch, error } = await pageQuery;
-    if (error) {
-      throw new Error(`Falha ao buscar transações no Supabase: ${error.message}`);
-    }
-
-    if (batch && batch.length > 0) {
-      rawRows.push(...batch);
-    }
-
-    if (!batch || batch.length < PAGE_SIZE) {
-      break;
-    }
+  const batches = await Promise.all(pagePromises);
+  const rawRows: any[] = [];
+  for (const b of batches) {
+    if (b.error) throw b.error;
+    if (b.data) rawRows.push(...b.data);
   }
 
-  const rows: SaleRecord[] = (rawRows || []).map((r: any) => ({
+  return { rawRows, productFamilyMap };
+}
+
+/** Carrega os dados analíticos completos para alimentar a Dashboard. */
+export async function getDashboardData(
+  range: RangeKey = "30",
+  customFrom?: string | null,
+  customTo?: string | null,
+): Promise<DashboardData> {
+  const { from, to } = resolveDateRange(range, customFrom, customTo);
+  const { rawRows, productFamilyMap } = await fetchTransactionsData(from, to);
+
+  const rows: SaleRecord[] = rawRows.map((r: any) => ({
     transaction_code: r.transaction_code,
     product_id: r.product_id,
     product_name: r.product_name,
-    family: r.products?.family || r.product_name,
+    family: productFamilyMap.get(r.product_id) || r.product_name,
     customer_email: r.customer_email,
     customer_name: r.customer_name,
     status: r.status,
@@ -354,12 +371,12 @@ export async function getDashboardData(
     installments: Number(r.installments) || 1,
     purchase_sequence: Number(r.purchase_sequence) || 1,
     is_recompra: Boolean(r.is_recompra),
-    days_since_first_purchase: Number(r.days_since_first_purchase) || 0,
-    days_since_prev_purchase: Number(r.days_since_prev_purchase) || 0,
-    tracking_source: r.tracking_source,
-    utm_source: r.utm_source,
-    utm_medium: r.utm_medium,
-    utm_campaign: r.utm_campaign,
+    days_since_first_purchase: 0,
+    days_since_prev_purchase: 0,
+    tracking_source: null,
+    utm_source: null,
+    utm_medium: null,
+    utm_campaign: null,
   }));
 
   // 1. Agregação de Síntese
@@ -643,53 +660,7 @@ export async function getFinancialData(
 ): Promise<FinancialData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
 
-  const PAGE_SIZE = 1000;
-  const rawRows: any[] = [];
-
-  for (let page = 0; ; page++) {
-    const fromIndex = page * PAGE_SIZE;
-    const toIndex = fromIndex + PAGE_SIZE - 1;
-
-    let pageQuery = supabaseAdmin
-      .from("transactions")
-      .select(`
-        transaction_code,
-        product_id,
-        product_name,
-        customer_email,
-        customer_name,
-        status,
-        approved_at,
-        bruto,
-        liquido,
-        taxa_hotmart,
-        payment_type,
-        installments,
-        is_recompra,
-        products (family)
-      `)
-      .eq("status", "APPROVED")
-      .lte("approved_at", to)
-      .order("approved_at", { ascending: false })
-      .range(fromIndex, toIndex);
-
-    if (from) {
-      pageQuery = pageQuery.gte("approved_at", from);
-    }
-
-    const { data: batch, error } = await pageQuery;
-    if (error) {
-      throw new Error(`Falha ao buscar transações financeiras: ${error.message}`);
-    }
-
-    if (batch && batch.length > 0) {
-      rawRows.push(...batch);
-    }
-
-    if (!batch || batch.length < PAGE_SIZE) {
-      break;
-    }
-  }
+  const { rawRows, productFamilyMap } = await fetchTransactionsData(from, to);
 
   let totalBruto = 0;
   let totalLiquido = 0;
@@ -755,20 +726,22 @@ export async function getFinancialData(
       parceladoMap.set(n, parData);
     }
 
-    transactions.push({
-      transaction_code: r.transaction_code,
-      product_name: r.product_name,
-      family: r.products?.family || r.product_name,
-      customer_name: r.customer_name,
-      customer_email: r.customer_email,
-      approved_at: r.approved_at,
-      payment_type: normPay,
-      installments,
-      bruto,
-      liquido,
-      taxa_hotmart: taxa,
-      is_recompra: Boolean(r.is_recompra),
-    });
+    if (transactions.length < 200) {
+      transactions.push({
+        transaction_code: r.transaction_code,
+        product_name: r.product_name,
+        family: productFamilyMap.get(r.product_id) || r.product_name,
+        customer_name: r.customer_name,
+        customer_email: r.customer_email,
+        approved_at: r.approved_at,
+        payment_type: normPay,
+        installments,
+        bruto,
+        liquido,
+        taxa_hotmart: taxa,
+        is_recompra: Boolean(r.is_recompra),
+      });
+    }
   }
 
   const totalTransacoes = rawRows.length;
