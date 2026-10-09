@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { isAuthenticated } from "@/lib/auth";
+import { NavMenu } from "@/components/nav-menu";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function AppLayout({
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-ink)]">
       <header className="sticky top-0 z-40 border-b border-[var(--color-line)] bg-[#FAFAF8]/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 sm:gap-6">
             <div className="flex items-center gap-2.5">
               <Image
                 src="/dryos-logo.png"
@@ -31,13 +32,15 @@ export default async function AppLayout({
               </span>
             </div>
 
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[var(--color-oak)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-good)] animate-pulse" />
-              Tempo Real
-            </span>
+            <NavMenu />
           </div>
 
           <div className="flex items-center gap-4">
+            <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[var(--color-oak)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-good)] animate-pulse" />
+              Tempo Real
+            </span>
+
             <form action="/api/logout" method="POST">
               <button
                 type="submit"

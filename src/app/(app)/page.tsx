@@ -199,7 +199,7 @@ export default async function SalesDashboardPage(props: PageProps) {
                 Clientes que Recompraram
               </h3>
               <p className="mt-1 text-xs text-[#DCE6DD]">
-                Alunos recorrentes geram ticket médio até 83% maior e maior margem líquida.
+                Alunas que adquiriram produtos distintos no ecossistema (cross-sell real), com ticket médio superior.
               </p>
 
               <div className="mt-6 grid grid-cols-2 gap-4">
@@ -279,9 +279,17 @@ export default async function SalesDashboardPage(props: PageProps) {
 
       {/* 6. Meios de Pagamento & Eficiência Líquida */}
       <section className="flex flex-col gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          05 / 05 · Operação Financeira e Meios de Pagamento
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+            05 / 05 · Operação Financeira e Meios de Pagamento
+          </span>
+          <a
+            href="/financeiro"
+            className="font-mono text-xs text-[var(--color-oak)] hover:underline flex items-center gap-1 font-medium"
+          >
+            Ver Análise Financeira Completa &rarr;
+          </a>
+        </div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <Card
             title="Eficiência por Meio de Pagamento"

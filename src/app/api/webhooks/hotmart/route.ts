@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
       // Cliente já existe: buscar compras anteriores dele
       const { data: prevPurchases } = await supabaseAdmin
         .from("transactions")
-        .select("approved_at")
+        .select("approved_at, product_id")
         .eq("customer_email", buyerEmail)
         .eq("status", "APPROVED")
         .order("approved_at", { ascending: false });
@@ -224,7 +224,10 @@ export async function POST(req: NextRequest) {
       const prevCount = prevPurchases?.length ?? 0;
       if (prevCount > 0) {
         purchaseSequence = prevCount + 1;
-        isRecompra = true;
+        const hasPriorDifferentProduct = prevPurchases!.some(
+          (p) => String(p.product_id) !== rawProductId,
+        );
+        isRecompra = hasPriorDifferentProduct;
 
         const firstDate = new Date(customerData.first_purchase_at || prevPurchases![prevCount - 1].approved_at);
         const lastDate = new Date(prevPurchases![0].approved_at);

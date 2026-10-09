@@ -100,6 +100,123 @@ export type DashboardData = {
   currentRange: RangeKey;
 };
 
+export type FinancialSynthesisMetrics = {
+  faturamentoBruto: number;
+  faturamentoLiquido: number;
+  retencaoTotal: number;
+  pctRetencao: number;
+  margemLiquida: number;
+  totalTransacoes: number;
+  clientesUnicos: number;
+  ticketMedioBruto: number;
+  ticketMedioLiquido: number;
+};
+
+export type FinancialPaymentMethod = {
+  method: string;
+  transacoes: number;
+  bruto: number;
+  liquido: number;
+  taxa: number;
+  ticketMedio: number;
+  eficienciaPct: number;
+  shareReceitaBruta: number;
+  shareVolume: number;
+};
+
+export type ParceladoHotmartMetric = {
+  totalTransacoes: number;
+  alunasUnicas: number;
+  receitaBruta: number;
+  receitaLiquida: number;
+  retencaoTotal: number;
+  ticketMedioParcela: number;
+  eficienciaPct: number;
+  porParcela: Array<{
+    parcela: number;
+    transacoes: number;
+    bruto: number;
+    liquido: number;
+    taxa: number;
+  }>;
+};
+
+export type CardInstallmentDetail = {
+  parcela: number;
+  transacoes: number;
+  bruto: number;
+  liquido: number;
+  taxaRetida: number;
+  eficienciaPct: number;
+  taxaMediaPct: number;
+  ticketMedio: number;
+};
+
+export type FinancialTransactionItem = {
+  transaction_code: string;
+  product_name: string;
+  family: string;
+  customer_name: string | null;
+  customer_email: string;
+  approved_at: string;
+  payment_type: string;
+  installments: number;
+  bruto: number;
+  liquido: number;
+  taxa_hotmart: number;
+  is_recompra: boolean;
+};
+
+export type FinancialData = {
+  synthesis: FinancialSynthesisMetrics;
+  paymentMethods: FinancialPaymentMethod[];
+  parceladoHotmart: ParceladoHotmartMetric;
+  cardInstallments: CardInstallmentDetail[];
+  transactions: FinancialTransactionItem[];
+  from: string | null;
+  to: string;
+  currentRange: RangeKey;
+};
+
+export function normalizePaymentMethod(raw: string | null | undefined): string {
+  if (!raw) return "Outros";
+  const s = raw.toLowerCase().trim();
+  if (s.includes("parcelado") || s.includes("hotmart_installments")) {
+    return "Parcelado Hotmart";
+  }
+  if (s.includes("pix")) {
+    return "Pix";
+  }
+  if (s.includes("cart") || s.includes("credit") || s.includes("conta hotmart (cartão)")) {
+    return "Cartão de Crédito";
+  }
+  if (s.includes("boleto")) {
+    return "Boleto Bancário";
+  }
+  if (s.includes("nupay")) {
+    return "NuPay";
+  }
+  if (s.includes("apple")) {
+    return "Apple Pay";
+  }
+  if (s.includes("paypal")) {
+    return "PayPal";
+  }
+  if (s.includes("mbway") || s.includes("mb way")) {
+    return "MB WAY";
+  }
+  if (s.includes("klarna")) {
+    return "Klarna";
+  }
+  if (s.includes("saldo")) {
+    return "Saldo Hotmart";
+  }
+  if (s.includes("cash")) {
+    return "Cash Payment";
+  }
+  return raw;
+}
+
 function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -302,15 +419,15 @@ export async function getDashboardData(
     familyMap.set(famKey, fam);
 
     // Meio de pagamento
-    const payKey = row.payment_type || "Outro";
+    const payKey = normalizePaymentMethod(row.payment_type);
     const pay = payMap.get(payKey) || { transacoes: 0, bruto: 0, liquido: 0 };
     pay.transacoes += 1;
     pay.bruto += row.bruto;
     pay.liquido += row.liquido;
     payMap.set(payKey, pay);
 
-    // Parcelas no cartão
-    if (payKey.toLowerCase().includes("cart") || payKey.toLowerCase().includes("credit")) {
+    // Parcelas no cartão de crédito
+    if (payKey === "Cartão de Crédito") {
       const n = Math.min(Math.max(1, row.installments), 12);
       const inst = instMap.get(n) || { transacoes: 0, bruto: 0 };
       inst.transacoes += 1;
@@ -510,3 +627,228 @@ export async function getProductSalesDetail(
       utm_campaign: r.utm_campaign,
     }));
 }
+
+/**
+ * Consulta e agrega métricas financeiras detalhadas para a página /financeiro:
+ * - Síntese de Caixa & Retenção
+ * - Detalhamento por Meio de Pagamento
+ * - Módulo Especial: Parcelado Hotmart (recorrência/boletos mensais de A Formação)
+ * - Curva de Juros e Eficiência no Parcelamento de Cartão (1x a 12x)
+ * - Extrato de Transações do período
+ */
+export async function getFinancialData(
+  range: RangeKey = "all",
+  customFrom?: string | null,
+  customTo?: string | null,
+): Promise<FinancialData> {
+  const { from, to } = resolveDateRange(range, customFrom, customTo);
+
+  const PAGE_SIZE = 1000;
+  const rawRows: any[] = [];
+
+  for (let page = 0; ; page++) {
+    const fromIndex = page * PAGE_SIZE;
+    const toIndex = fromIndex + PAGE_SIZE - 1;
+
+    let pageQuery = supabaseAdmin
+      .from("transactions")
+      .select(`
+        transaction_code,
+        product_id,
+        product_name,
+        customer_email,
+        customer_name,
+        status,
+        approved_at,
+        bruto,
+        liquido,
+        taxa_hotmart,
+        payment_type,
+        installments,
+        is_recompra,
+        products (family)
+      `)
+      .eq("status", "APPROVED")
+      .lte("approved_at", to)
+      .order("approved_at", { ascending: false })
+      .range(fromIndex, toIndex);
+
+    if (from) {
+      pageQuery = pageQuery.gte("approved_at", from);
+    }
+
+    const { data: batch, error } = await pageQuery;
+    if (error) {
+      throw new Error(`Falha ao buscar transações financeiras: ${error.message}`);
+    }
+
+    if (batch && batch.length > 0) {
+      rawRows.push(...batch);
+    }
+
+    if (!batch || batch.length < PAGE_SIZE) {
+      break;
+    }
+  }
+
+  let totalBruto = 0;
+  let totalLiquido = 0;
+  let totalTaxa = 0;
+  const customersSet = new Set<string>();
+
+  const payMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
+  const cardMap = new Map<number, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
+  const parceladoMap = new Map<number, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
+  const parceladoBuyers = new Set<string>();
+  let parceladoBruto = 0;
+  let parceladoLiquido = 0;
+  let parceladoTaxa = 0;
+  let parceladoCount = 0;
+
+  const transactions: FinancialTransactionItem[] = [];
+
+  for (const r of rawRows) {
+    const bruto = Number(r.bruto) || 0;
+    const liquido = Number(r.liquido) || 0;
+    const taxa = Number(r.taxa_hotmart) || 0;
+    const normPay = normalizePaymentMethod(r.payment_type);
+    const installments = Math.max(1, Number(r.installments) || 1);
+
+    totalBruto += bruto;
+    totalLiquido += liquido;
+    totalTaxa += taxa;
+    customersSet.add(r.customer_email);
+
+    // Meios de pagamento
+    const pData = payMap.get(normPay) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+    pData.transacoes += 1;
+    pData.bruto += bruto;
+    pData.liquido += liquido;
+    pData.taxa += taxa;
+    payMap.set(normPay, pData);
+
+    // Cartão de Crédito
+    if (normPay === "Cartão de Crédito") {
+      const n = Math.min(Math.max(1, installments), 12);
+      const cData = cardMap.get(n) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+      cData.transacoes += 1;
+      cData.bruto += bruto;
+      cData.liquido += liquido;
+      cData.taxa += taxa;
+      cardMap.set(n, cData);
+    }
+
+    // Parcelado Hotmart
+    if (normPay === "Parcelado Hotmart") {
+      parceladoCount += 1;
+      parceladoBruto += bruto;
+      parceladoLiquido += liquido;
+      parceladoTaxa += taxa;
+      parceladoBuyers.add(r.customer_email);
+
+      const n = Math.min(Math.max(1, installments), 12);
+      const parData = parceladoMap.get(n) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+      parData.transacoes += 1;
+      parData.bruto += bruto;
+      parData.liquido += liquido;
+      parData.taxa += taxa;
+      parceladoMap.set(n, parData);
+    }
+
+    transactions.push({
+      transaction_code: r.transaction_code,
+      product_name: r.product_name,
+      family: r.products?.family || r.product_name,
+      customer_name: r.customer_name,
+      customer_email: r.customer_email,
+      approved_at: r.approved_at,
+      payment_type: normPay,
+      installments,
+      bruto,
+      liquido,
+      taxa_hotmart: taxa,
+      is_recompra: Boolean(r.is_recompra),
+    });
+  }
+
+  const totalTransacoes = rawRows.length;
+  const clientesUnicos = customersSet.size;
+
+  const synthesis: FinancialSynthesisMetrics = {
+    faturamentoBruto: totalBruto,
+    faturamentoLiquido: totalLiquido,
+    retencaoTotal: totalTaxa,
+    pctRetencao: totalBruto > 0 ? (totalTaxa / totalBruto) * 100 : 0,
+    margemLiquida: totalBruto > 0 ? (totalLiquido / totalBruto) * 100 : 0,
+    totalTransacoes,
+    clientesUnicos,
+    ticketMedioBruto: totalTransacoes > 0 ? totalBruto / totalTransacoes : 0,
+    ticketMedioLiquido: totalTransacoes > 0 ? totalLiquido / totalTransacoes : 0,
+  };
+
+  const paymentMethods: FinancialPaymentMethod[] = [...payMap.entries()]
+    .map(([method, data]) => ({
+      method,
+      transacoes: data.transacoes,
+      bruto: data.bruto,
+      liquido: data.liquido,
+      taxa: data.taxa,
+      ticketMedio: data.transacoes > 0 ? data.bruto / data.transacoes : 0,
+      eficienciaPct: data.bruto > 0 ? (data.liquido / data.bruto) * 100 : 0,
+      shareReceitaBruta: totalBruto > 0 ? (data.bruto / totalBruto) * 100 : 0,
+      shareVolume: totalTransacoes > 0 ? (data.transacoes / totalTransacoes) * 100 : 0,
+    }))
+    .sort((a, b) => b.bruto - a.bruto);
+
+  const cardInstallments: CardInstallmentDetail[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const data = cardMap.get(i) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+    cardInstallments.push({
+      parcela: i,
+      transacoes: data.transacoes,
+      bruto: data.bruto,
+      liquido: data.liquido,
+      taxaRetida: data.taxa,
+      eficienciaPct: data.bruto > 0 ? (data.liquido / data.bruto) * 100 : 0,
+      taxaMediaPct: data.bruto > 0 ? (data.taxa / data.bruto) * 100 : 0,
+      ticketMedio: data.transacoes > 0 ? data.bruto / data.transacoes : 0,
+    });
+  }
+
+  const porParcelaParcelado = [];
+  for (let i = 1; i <= 12; i++) {
+    const data = parceladoMap.get(i) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+    if (data.transacoes > 0) {
+      porParcelaParcelado.push({
+        parcela: i,
+        transacoes: data.transacoes,
+        bruto: data.bruto,
+        liquido: data.liquido,
+        taxa: data.taxa,
+      });
+    }
+  }
+
+  const parceladoHotmart: ParceladoHotmartMetric = {
+    totalTransacoes: parceladoCount,
+    alunasUnicas: parceladoBuyers.size,
+    receitaBruta: parceladoBruto,
+    receitaLiquida: parceladoLiquido,
+    retencaoTotal: parceladoTaxa,
+    ticketMedioParcela: parceladoCount > 0 ? parceladoBruto / parceladoCount : 0,
+    eficienciaPct: parceladoBruto > 0 ? (parceladoLiquido / parceladoBruto) * 100 : 0,
+    porParcela: porParcelaParcelado,
+  };
+
+  return {
+    synthesis,
+    paymentMethods,
+    parceladoHotmart,
+    cardInstallments,
+    transactions,
+    from,
+    to,
+    currentRange: range,
+  };
+}
+

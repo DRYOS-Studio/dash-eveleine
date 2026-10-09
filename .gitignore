@@ -13,3 +13,7 @@ next-env.d.ts
 *.tsbuildinfo
 .env*
 /.open-next
+.dev.vars
+.wrangler
+
+
