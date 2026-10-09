@@ -32,3 +32,7 @@
 Regra única (webhook, import e `scripts/recalc-customer-history.js`): 1ª compra de um produto por quem já
 tinha comprado OUTRO produto em instante anterior. Rodar o script (dry-run por padrão) após mexer na regra.
 Definições dos indicadores em `docs/indicadores.md`.
+
+## Pendências
+
+Reembolsos, chargebacks e contestações ainda não aparecem no dash (as telas avisam). Detalhes e passos em `docs/pendencias.md`.
