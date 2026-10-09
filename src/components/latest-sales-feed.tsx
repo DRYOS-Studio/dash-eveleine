@@ -6,8 +6,8 @@ const cf = (n: number) =>
 export function LatestSalesFeed({ sales }: { sales: SaleRecord[] }) {
   if (!sales || sales.length === 0) {
     return (
-      <div className="py-8 text-center text-sm text-[var(--color-muted)]">
-        Nenhuma venda registrada até o momento. As novas vendas via webhook aparecerão aqui automaticamente.
+      <div className="py-8 text-center text-sm text-[var(--color-mute)]">
+        Nenhuma venda no período selecionado.
       </div>
     );
   }
@@ -54,11 +54,11 @@ export function LatestSalesFeed({ sales }: { sales: SaleRecord[] }) {
               <td className="py-3 pr-4">
                 {s.is_recompra ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--color-oak)]">
-                    Recompra ({s.purchase_sequence}ª)
+                    Recompra
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-0.5 font-mono text-[10px] font-medium text-[var(--color-mute)]">
-                    1ª Compra
+                    Sem recompra
                   </span>
                 )}
               </td>

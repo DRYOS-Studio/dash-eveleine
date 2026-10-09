@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { classifyProduct } from "@/lib/product-classifier";
+import { classifyProduct, cleanProductName } from "@/lib/product-classifier";
 
 type HotmartCommission = {
   value?: number;
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
 
     // Extração de dados da venda
     const rawProductId = String(data.product.id || "0");
-    const rawProductName = (data.product.name || "Produto Sem Nome").trim();
+    const rawProductName = cleanProductName(data.product.name || "Produto Sem Nome");
     const buyerEmail = (data.buyer?.email || "").toLowerCase().trim();
     const buyerName = data.buyer?.name || null;
     const buyerPhone = data.buyer?.checkout_phone || null;
@@ -156,21 +156,17 @@ export async function POST(req: NextRequest) {
       data.purchase.full_price?.value ?? data.purchase.price?.value ?? 0,
     );
 
-    let liquido = 0;
-    if (data.commissions && Array.isArray(data.commissions)) {
-      const producerComm = data.commissions.find((c) => c.source === "PRODUCER");
-      if (producerComm && typeof producerComm.value === "number") {
-        liquido = producerComm.value;
-      } else {
-        // Soma de todas menos Marketplace se não achar PRODUCER explicitamente
-        liquido = data.commissions
-          .filter((c) => c.source !== "MARKETPLACE")
-          .reduce((acc, c) => acc + (c.value || 0), 0);
-      }
-    } else {
-      // Estimativa padrão Hotmart se comissões vier vazia: ~90% líquido
-      liquido = Math.round(bruto * 0.9 * 100) / 100;
+    // Líquido = comissão do produtor informada pela Hotmart. Sem ela não há valor real:
+    // não gravamos estimativa — o evento fica com erro para revisão e a Hotmart reenvia.
+    const producerComm = data.commissions?.find((c) => c.source === "PRODUCER");
+    if (!producerComm || typeof producerComm.value !== "number") {
+      await supabaseAdmin
+        .from("webhook_events")
+        .update({ error: "Sem comissão PRODUCER: líquido desconhecido, venda não gravada" })
+        .eq("event_id", eventId);
+      return NextResponse.json({ error: "Comissão PRODUCER ausente" }, { status: 422 });
     }
+    const liquido = producerComm.value;
 
     const taxaHotmart = Math.max(0, Math.round((bruto - liquido) * 100) / 100);
 
@@ -219,15 +215,18 @@ export async function POST(req: NextRequest) {
         .select("approved_at, product_id")
         .eq("customer_email", buyerEmail)
         .eq("status", "APPROVED")
+        .neq("transaction_code", transactionCode)
         .order("approved_at", { ascending: false });
 
       const prevCount = prevPurchases?.length ?? 0;
       if (prevCount > 0) {
         purchaseSequence = prevCount + 1;
-        const hasPriorDifferentProduct = prevPurchases!.some(
-          (p) => String(p.product_id) !== rawProductId,
-        );
-        isRecompra = hasPriorDifferentProduct;
+        // Recompra = 1ª compra deste produto por quem já comprou OUTRO produto em instante anterior.
+        // Parcelas e repetições do mesmo produto não contam.
+        const earlier = prevPurchases!.filter((p) => new Date(p.approved_at) < new Date(approvedAt));
+        isRecompra =
+          earlier.some((p) => String(p.product_id) !== rawProductId) &&
+          !earlier.some((p) => String(p.product_id) === rawProductId);
 
         const firstDate = new Date(customerData.first_purchase_at || prevPurchases![prevCount - 1].approved_at);
         const lastDate = new Date(prevPurchases![0].approved_at);
@@ -278,19 +277,24 @@ export async function POST(req: NextRequest) {
       raw_payload: body,
     });
 
-    // Atualiza acumulados no cliente
-    const newTotalPurchases = (customerData?.total_purchases || 0) + 1;
-    const newTotalBruto = Number(customerData?.total_spent_bruto || 0) + bruto;
-    const newTotalLiquido = Number(customerData?.total_spent_liquido || 0) + liquido;
+    // Acumulados do cliente recalculados a partir das transações (idempotente em reentregas)
+    const { data: custTx } = await supabaseAdmin
+      .from("transactions")
+      .select("bruto, liquido")
+      .eq("customer_email", buyerEmail)
+      .eq("status", "APPROVED");
+    const totalPurchases = custTx?.length ?? 0;
+    const totalBruto = (custTx ?? []).reduce((acc, t) => acc + (Number(t.bruto) || 0), 0);
+    const totalLiquido = (custTx ?? []).reduce((acc, t) => acc + (Number(t.liquido) || 0), 0);
 
     await supabaseAdmin
       .from("customers")
       .update({
-        name: buyerName || customerData?.email,
-        phone: buyerPhone || undefined,
-        total_purchases: newTotalPurchases,
-        total_spent_bruto: newTotalBruto,
-        total_spent_liquido: newTotalLiquido,
+        ...(buyerName ? { name: buyerName } : {}),
+        ...(buyerPhone ? { phone: buyerPhone } : {}),
+        total_purchases: totalPurchases,
+        total_spent_bruto: Math.round(totalBruto * 100) / 100,
+        total_spent_liquido: Math.round(totalLiquido * 100) / 100,
         updated_at: new Date().toISOString(),
       })
       .eq("email", buyerEmail);

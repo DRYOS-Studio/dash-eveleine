@@ -9,21 +9,34 @@ export const nf = (n: number) => n.toLocaleString("pt-BR");
 export const pf = (n: number) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
 
-export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
+export function ProductFamilyTable({
+  families,
+  periodQuery,
+}: {
+  families: FamilyMetric[];
+  /** Querystring do período da tela (range/from/to), para o modal listar o mesmo recorte. */
+  periodQuery: string;
+}) {
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
   const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSelectFamily = async (fam: string) => {
     setSelectedFamily(fam);
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/product-sales?name=${encodeURIComponent(fam)}`);
+      const res = await fetch(`/api/product-sales?family=${encodeURIComponent(fam)}&${periodQuery}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao buscar as vendas");
       setSales(data.sales || []);
+      setTotal(data.total ?? 0);
     } catch (err) {
-      console.error(err);
       setSales([]);
+      setTotal(0);
+      setError(err instanceof Error ? err.message : "Falha ao buscar as vendas");
     } finally {
       setLoading(false);
     }
@@ -32,6 +45,8 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
   const handleClose = () => {
     setSelectedFamily(null);
     setSales([]);
+    setTotal(0);
+    setError(null);
   };
 
   return (
@@ -62,7 +77,7 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
                   key={f.family}
                   onClick={() => handleSelectFamily(f.family)}
                   className="group cursor-pointer transition-colors hover:bg-[var(--color-surface)]/60"
-                  title="Clique para ver as vendas desta família"
+                  title="Clique para ver as vendas desta família no período"
                 >
                   <td className="py-3 px-3 font-mono text-xs text-[var(--color-mute-soft)]">
                     {String(i + 1).padStart(2, "0")}
@@ -111,7 +126,7 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
             <div className="flex items-center justify-between border-b border-[var(--color-line)] bg-[#FAFAF8] p-6">
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-oak-light)]">
-                  Vendas do Produto / Família
+                  Vendas da Família no Período
                 </span>
                 <h3 className="font-heading text-xl font-bold text-[var(--color-ink)] mt-0.5">
                   {selectedFamily}
@@ -132,9 +147,13 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
                 <div className="flex h-48 items-center justify-center font-mono text-xs text-[var(--color-mute)]">
                   Carregando transações individuais...
                 </div>
+              ) : error ? (
+                <div className="flex h-48 items-center justify-center text-sm text-[var(--color-negative)]">
+                  Não foi possível carregar as vendas: {error}
+                </div>
               ) : sales.length === 0 ? (
                 <div className="flex h-48 items-center justify-center text-sm text-[var(--color-mute)]">
-                  Nenhuma transação individual encontrada para este produto.
+                  Nenhuma venda desta família no período.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -172,11 +191,11 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
                           <td className="py-2.5 pr-3">
                             {s.is_recompra ? (
                               <span className="inline-flex rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--color-oak)]">
-                                Recompra ({s.purchase_sequence}ª)
+                                Recompra
                               </span>
                             ) : (
                               <span className="inline-flex rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-0.5 font-mono text-[10px] font-medium text-[var(--color-mute)]">
-                                1ª Compra
+                                Sem recompra
                               </span>
                             )}
                           </td>
@@ -203,7 +222,7 @@ export function ProductFamilyTable({ families }: { families: FamilyMetric[] }) {
 
             {/* Rodapé do Modal */}
             <div className="flex items-center justify-between border-t border-[var(--color-line)] bg-[#FAFAF8] p-4 text-xs font-mono text-[var(--color-mute)]">
-              <span>Exibindo até 50 transações mais recentes</span>
+              <span>{loading || error ? "" : `Exibindo ${nf(sales.length)} de ${nf(total)} vendas do período, as mais recentes primeiro`}</span>
               <button
                 type="button"
                 onClick={handleClose}

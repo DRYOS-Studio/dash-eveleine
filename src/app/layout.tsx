@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Partiu Empreender · Inteligência de Vendas (DRYOS)",
-  description: "Vendas, retenção e recompras com consolidação em tempo real",
+  description: "Vendas, recompras e meios de pagamento da Hotmart",
   icons: {
     icon: "/favicon.svg",
   },

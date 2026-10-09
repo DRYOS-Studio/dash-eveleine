@@ -9,6 +9,18 @@ export type ProductClassification = {
   category: "curso" | "workshop" | "imersao" | "gravacao" | "mentoria" | "pack" | "combo" | "outro";
 };
 
+/** Hotmart manda nomes com entidades HTML (&amp;) e caracteres invisíveis; limpar antes de gravar. */
+export function cleanProductName(raw: string): string {
+  return (raw || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .trim();
+}
+
 export function classifyProduct(rawName: string): ProductClassification {
   const name = (rawName || "").trim();
   const lower = name.toLowerCase();

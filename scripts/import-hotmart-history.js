@@ -245,7 +245,10 @@ async function main() {
 
     if (!isApproved) continue;
 
-    const productName = (r["Nome do Produto"] || r["Produto"] || "Produto").trim();
+    const productName = (r["Nome do Produto"] || r["Produto"] || "Produto")
+      .replace(/&amp;/g, "&")
+      .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+      .trim();
     const productId = (r["Código do Produto"] || r["ID do Produto"] || productName.toLowerCase().replace(/[^a-z0-9]/g, "_")).trim();
     const customerName = (r["Nome"] || r["Comprador"] || "").trim() || null;
     const phone = (r["Telefone"] || r["Celular"] || "").trim() || null;
@@ -253,7 +256,11 @@ async function main() {
 
     const bruto = parseCurrency(r["Preço Total"] || r["Preço do Produto"] || r["Preço"]);
     let liquido = parseCurrency(r["Faturamento líquido"] || r["Valor que você recebeu convertido"] || r["Preço da Oferta"]);
-    if (!liquido && bruto) liquido = Math.round(bruto * 0.9 * 100) / 100;
+    if (!liquido && bruto) {
+      // Sem líquido real não gravamos estimativa: a linha é pulada e listada.
+      console.warn(`Pulada (sem líquido real): ${r["Código da transação"] || "?"}`);
+      continue;
+    }
     const taxa = Math.max(0, Math.round((bruto - liquido) * 100) / 100);
 
     const paymentType = (r["Tipo de Pagamento"] || r["Meio de Pagamento"] || "Outro").trim();
@@ -321,7 +328,11 @@ async function main() {
 
     const prevCount = cust.purchases.length;
     r.purchase_sequence = prevCount + 1;
-    r.is_recompra = prevCount > 0;
+    // Recompra = 1ª compra deste produto por quem já comprou OUTRO produto em instante anterior.
+    const earlier = cust.purchases.filter((p) => p.approved_at < r.approved_at);
+    r.is_recompra =
+      earlier.some((p) => p.product_id !== r.product_id) &&
+      !earlier.some((p) => p.product_id === r.product_id);
 
     if (prevCount === 0) {
       r.days_since_first_purchase = 0;

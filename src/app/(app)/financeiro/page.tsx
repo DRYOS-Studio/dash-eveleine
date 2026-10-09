@@ -63,7 +63,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-sm text-[var(--color-mute)]">
-              Retenções da plataforma, parcelamentos, boletos recorrentes e eficiência líquida.
+              Taxas retidas, parcelamento no cartão, Parcelado Hotmart e eficiência líquida. Só vendas aprovadas; estornos não são recebidos.
             </p>
             <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
             <AutoRefresh intervalMinutes={5} />
@@ -97,19 +97,19 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
           <Tile label="Faturamento Líquido" valor={cf(synthesis.faturamentoLiquido, true)}>
             <span className="text-xs font-semibold text-[var(--color-good)]">
-              Efetivo depositado em conta
+              Comissão do produtor (bruto − taxa)
             </span>
           </Tile>
 
           <Tile label="Retenção da Plataforma" valor={cf(synthesis.retencaoTotal, true)}>
             <span className="text-xs text-[var(--color-clay)]">
-              {pf(synthesis.pctRetencao)} de taxa média
+              {pf(synthesis.pctRetencao)} do bruto
             </span>
           </Tile>
 
           <Tile label="Margem Líquida" valor={pf(synthesis.margemLiquida)}>
             <span className="text-xs text-[var(--color-oak)] font-medium">
-              Eficiência geral de caixa
+              Líquido ÷ bruto
             </span>
           </Tile>
 
@@ -119,9 +119,9 @@ export default async function FinancialDashboardPage(props: PageProps) {
             </span>
           </Tile>
 
-          <Tile label="Alunas Únicas" valor={nf(synthesis.clientesUnicos)}>
+          <Tile label="Clientes Únicos" valor={nf(synthesis.clientesUnicos)}>
             <span className="text-xs text-[var(--color-mute)]">
-              Na janela selecionada
+              No período selecionado
             </span>
           </Tile>
         </div>
@@ -133,8 +133,8 @@ export default async function FinancialDashboardPage(props: PageProps) {
           02 / 04 · Eficiência por Meio de Pagamento
         </span>
         <Card
-          title="Raio-X de Meios de Pagamento"
-          sub="Comparativo direto do faturamento bruto transacionado, taxa retida por adquirentes/Hotmart e o valor líquido que entra no caixa."
+          title="Meios de pagamento"
+          sub="Faturamento bruto, taxa retida (bruto − líquido) e faturamento líquido por meio de pagamento."
           wide
         >
           <div className="overflow-x-auto">
@@ -214,46 +214,26 @@ export default async function FinancialDashboardPage(props: PageProps) {
             </table>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[var(--color-line)] text-xs text-[var(--color-ink-soft)]">
-            <div className="rounded-lg bg-[var(--color-surface)] p-3 border border-[var(--color-line)]">
-              <span className="font-heading font-semibold text-[var(--color-good)] block mb-1">
-                ⚡ Alta Eficiência: Pix & NuPay (85%+)
-              </span>
-              Recebimento à vista com a menor retenção da esteira. Cada venda preserva a margem máxima da produtora.
-            </div>
-            <div className="rounded-lg bg-[var(--color-surface)] p-3 border border-[var(--color-line)]">
-              <span className="font-heading font-semibold text-[var(--color-oak)] block mb-1">
-                💳 Cartão de Crédito (~72% líquida)
-              </span>
-              Maior volume financeiro bruto, com impacto de retenção decorrente das opções de parcelamento longo (10x a 12x).
-            </div>
-            <div className="rounded-lg bg-[var(--color-surface)] p-3 border border-[var(--color-line)]">
-              <span className="font-heading font-semibold text-[#D97706] block mb-1">
-                📄 Parcelado Hotmart (~73% líquida)
-              </span>
-              Modelo de boletos/mensalidades recorrentes exclusivo de *A Formação*, viabilizando alunas sem comprometer limite de crédito.
-            </div>
-          </div>
         </Card>
       </section>
 
       {/* 4. Módulo Parcelado Hotmart & Curva de Juros de Cartão */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          03 / 04 · Análise de Parcelamento & Recorrência
+          03 / 04 · Parcelado Hotmart e Parcelamento no Cartão
         </span>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Dossiê: Parcelado Hotmart */}
           <Card
-            title="Dossiê: Parcelado Hotmart (Boletos Mensais)"
-            sub="Módulo de mensalidades recorrentes por boleto/Pix de A Formação."
+            title="Parcelado Hotmart"
+            sub="Vendas com meio de pagamento Parcelado Hotmart. Cada venda é uma parcela paga."
           >
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] block truncate">
-                    Alunas Ativas
+                    Compradores
                   </span>
                   <span className="font-heading text-lg font-bold text-[var(--color-ink)]">
                     {nf(parceladoHotmart.alunasUnicas)}
@@ -261,7 +241,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                 </div>
                 <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] block truncate">
-                    Boletos Pagos
+                    Parcelas pagas
                   </span>
                   <span className="font-heading text-lg font-bold text-[var(--color-ink)]">
                     {nf(parceladoHotmart.totalTransacoes)}
@@ -269,7 +249,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                 </div>
                 <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] block truncate">
-                    Líquido em Caixa
+                    Líquido
                   </span>
                   <span className="font-heading text-lg font-bold text-[var(--color-good)] whitespace-nowrap">
                     {cf(parceladoHotmart.receitaLiquida, true)}
@@ -287,8 +267,13 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
               <div>
                 <h4 className="text-xs font-semibold text-[var(--color-ink)] mb-2 uppercase font-mono tracking-wider">
-                  Distribuição por Número de Parcelas
+                  Parcelas pagas por plano de parcelamento
                 </h4>
+                {parceladoHotmart.porParcela.length === 0 && (
+                  <p className="py-4 text-xs text-[var(--color-mute)]">
+                    Nenhuma venda no Parcelado Hotmart no período.
+                  </p>
+                )}
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {parceladoHotmart.porParcela.map((p) => {
                     const maxTx = Math.max(
@@ -300,7 +285,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                     return (
                       <div key={p.parcela} className="flex items-center gap-3 text-xs">
                         <span className="w-16 font-mono text-[var(--color-mute)]">
-                          {p.parcela}x
+                          plano {p.parcela}x
                         </span>
                         <div className="flex-1 h-3 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
                           <div
@@ -320,19 +305,13 @@ export default async function FinancialDashboardPage(props: PageProps) {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3.5 text-xs text-[var(--color-ink-soft)] leading-relaxed">
-                📌 <strong>Como funciona na Hotmart:</strong> Cada boleto mensal quitado pela aluna
-                gera uma nova transação com código <code>HP...</code>. Essas transações somam
-                corretamente ao faturamento do período, mas foram separadas da taxa de recompra na
-                tela inicial por representarem a quitação do mesmo produto educacional.
-              </div>
             </div>
           </Card>
 
           {/* Curva de Eficiência no Parcelamento de Cartão */}
           <Card
-            title="Curva de Juros: Parcelamento no Cartão (1x a 12x)"
-            sub="Como a retenção percentual de taxas e juros aumenta conforme o prazo de parcelamento escolhido pela aluna."
+            title="Eficiência por parcelas no cartão (1x a 12x)"
+            sub="Taxa média e eficiência (líquido ÷ bruto) das vendas no cartão, por número de parcelas."
           >
             <div className="flex flex-col gap-3">
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -357,7 +336,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                                 : "text-[var(--color-ink)]"
                             }`}
                           >
-                            {inst.parcela === 1 ? "1x à vista" : `${inst.parcela}x`}
+                            {`${inst.parcela}x`}
                           </span>
                           <span className="text-[10px] text-[var(--color-mute)] font-mono">
                             ({nf(inst.transacoes)})
@@ -397,11 +376,6 @@ export default async function FinancialDashboardPage(props: PageProps) {
                   })}
               </div>
 
-              <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3 text-xs text-[var(--color-ink-soft)] leading-relaxed">
-                💡 <strong>Alavanca de Caixa:</strong> Vendas em 1x preservam <strong>83,7%</strong> do valor no caixa,
-                enquanto em 12x a eficiência cai para <strong>64,3%</strong> devido às taxas de antecipação e parcelamento da adquirente.
-                Campanhas com incentivo ao Pix ou menor parcelamento aumentam diretamente a margem líquida.
-              </div>
             </div>
           </Card>
         </div>
@@ -410,14 +384,14 @@ export default async function FinancialDashboardPage(props: PageProps) {
       {/* 5. Extrato de Transações */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          04 / 04 · Extrato & Auditoria de Transações
+          04 / 04 · Extrato de Vendas
         </span>
         <Card
-          title="Extrato Completo de Vendas"
-          sub="Consulte e audite individualmente cada venda realizada no período, com detalhamento de taxas retidas e meio de pagamento."
+          title="Extrato de vendas"
+          sub="Vendas do período, da mais recente para a mais antiga, com taxa retida e meio de pagamento."
           wide
         >
-          <FinancialLedgerTable transactions={transactions} />
+          <FinancialLedgerTable transactions={transactions} total={synthesis.totalTransacoes} />
         </Card>
       </section>
     </div>

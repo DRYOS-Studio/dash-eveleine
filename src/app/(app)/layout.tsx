@@ -36,11 +36,6 @@ export default async function AppLayout({
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-[var(--color-oak)]/15 bg-[var(--color-oak-tint)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[var(--color-oak)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-good)] animate-pulse" />
-              Tempo Real
-            </span>
-
             <form action="/api/logout" method="POST">
               <button
                 type="submit"

@@ -1,20 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProductSalesDetail } from "@/lib/sales-data";
+import { isAuthenticated } from "@/lib/auth";
+import { getProductSalesDetail, resolveDateRange, type RangeKey } from "@/lib/sales-data";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const name = searchParams.get("name") || "";
-
-  if (!name) {
-    return NextResponse.json({ error: "Parâmetro 'name' é obrigatório" }, { status: 400 });
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const family = searchParams.get("family") || "";
+  if (!family) {
+    return NextResponse.json({ error: "Parâmetro 'family' é obrigatório" }, { status: 400 });
+  }
+
+  const { from, to } = resolveDateRange(
+    (searchParams.get("range") as RangeKey) || "30",
+    searchParams.get("from"),
+    searchParams.get("to"),
+  );
+
   try {
-    const sales = await getProductSalesDetail(name, 50);
-    return NextResponse.json({ sales });
+    const { sales, total } = await getProductSalesDetail(family, from, to, 50);
+    return NextResponse.json({ sales, total });
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao buscar vendas do produto" },
+      { error: (err as { message?: string })?.message ?? "Erro ao buscar vendas da família" },
       { status: 500 },
     );
   }

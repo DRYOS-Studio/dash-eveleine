@@ -22,12 +22,6 @@ export type SaleRecord = {
   installments: number;
   purchase_sequence: number;
   is_recompra: boolean;
-  days_since_first_purchase: number;
-  days_since_prev_purchase: number;
-  tracking_source: string | null;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
 };
 
 export type SynthesisMetrics = {
@@ -292,6 +286,7 @@ async function fetchTransactionsData(from: string | null, to: string) {
   ]);
 
   if (countResult.error) throw countResult.error;
+  if (productsResult.error) throw productsResult.error;
 
   const total = countResult.count || 0;
   const productFamilyMap = new Map<string, string>();
@@ -327,7 +322,9 @@ async function fetchTransactionsData(from: string | null, to: string) {
       `)
       .eq("status", "APPROVED")
       .lte("approved_at", to)
+      // desempate por transaction_code: sem ele, vendas no mesmo instante podem duplicar/sumir entre páginas
       .order("approved_at", { ascending: false })
+      .order("transaction_code", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
     if (from) {
@@ -367,16 +364,10 @@ export async function getDashboardData(
     bruto: Number(r.bruto) || 0,
     liquido: Number(r.liquido) || 0,
     taxa_hotmart: Number(r.taxa_hotmart) || 0,
-    payment_type: r.payment_type || "Outro",
+    payment_type: normalizePaymentMethod(r.payment_type),
     installments: Number(r.installments) || 1,
     purchase_sequence: Number(r.purchase_sequence) || 1,
     is_recompra: Boolean(r.is_recompra),
-    days_since_first_purchase: 0,
-    days_since_prev_purchase: 0,
-    tracking_source: null,
-    utm_source: null,
-    utm_medium: null,
-    utm_campaign: null,
   }));
 
   // 1. Agregação de Síntese
@@ -566,83 +557,56 @@ export async function getDashboardData(
   };
 }
 
-/** Retorna vendas de um produto ou família específica para o Drawer/Modal interativo. */
+/** Vendas de uma família no período, para o modal da tabela de produtos. */
 export async function getProductSalesDetail(
-  familyOrName: string,
+  family: string,
+  from: string | null,
+  to: string,
   limit = 50,
-): Promise<SaleRecord[]> {
-  const normalizedSearch = familyOrName.trim();
-
-  // 1. Localiza produtos correspondentes à família ou nome
-  const { data: matchedProducts } = await supabaseAdmin
+): Promise<{ sales: SaleRecord[]; total: number }> {
+  const { data: prods, error: prodErr } = await supabaseAdmin
     .from("products")
     .select("id")
-    .or(`name.ilike.%${normalizedSearch}%,family.ilike.%${normalizedSearch}%`);
+    .eq("family", family);
+  if (prodErr) throw prodErr;
 
-  const productIds = (matchedProducts || []).map((p: any) => p.id);
+  const productIds = (prods || []).map((p: { id: string }) => p.id);
+  if (productIds.length === 0) return { sales: [], total: 0 };
 
   let query = supabaseAdmin
     .from("transactions")
-    .select(`
-      transaction_code,
-      product_id,
-      product_name,
-      customer_email,
-      customer_name,
-      status,
-      approved_at,
-      bruto,
-      liquido,
-      taxa_hotmart,
-      payment_type,
-      installments,
-      purchase_sequence,
-      is_recompra,
-      days_since_first_purchase,
-      days_since_prev_purchase,
-      tracking_source,
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      products (family, edition)
-    `)
-    .eq("status", "APPROVED");
+    .select(
+      `transaction_code, product_id, product_name, customer_email, customer_name, status,
+       approved_at, bruto, liquido, taxa_hotmart, payment_type, installments,
+       purchase_sequence, is_recompra`,
+      { count: "exact" },
+    )
+    .eq("status", "APPROVED")
+    .in("product_id", productIds)
+    .lte("approved_at", to);
+  if (from) query = query.gte("approved_at", from);
 
-  if (productIds.length > 0) {
-    query = query.or(`product_id.in.(${productIds.join(",")}),product_name.ilike.%${normalizedSearch}%`);
-  } else {
-    query = query.ilike("product_name", `%${normalizedSearch}%`);
-  }
+  const { data, error, count } = await query.order("approved_at", { ascending: false }).limit(limit);
+  if (error) throw error;
 
-  const { data, error } = await query
-    .order("approved_at", { ascending: false })
-    .limit(limit);
-
-  if (error || !data) return [];
-
-  return (data as any[]).map((r) => ({
-      transaction_code: r.transaction_code,
-      product_id: r.product_id,
-      product_name: r.product_name,
-      family: r.products?.family || r.product_name,
-      customer_email: r.customer_email,
-      customer_name: r.customer_name,
-      status: r.status,
-      approved_at: r.approved_at,
-      bruto: Number(r.bruto) || 0,
-      liquido: Number(r.liquido) || 0,
-      taxa_hotmart: Number(r.taxa_hotmart) || 0,
-      payment_type: r.payment_type || "Outro",
-      installments: Number(r.installments) || 1,
-      purchase_sequence: Number(r.purchase_sequence) || 1,
-      is_recompra: Boolean(r.is_recompra),
-      days_since_first_purchase: Number(r.days_since_first_purchase) || 0,
-      days_since_prev_purchase: Number(r.days_since_prev_purchase) || 0,
-      tracking_source: r.tracking_source,
-      utm_source: r.utm_source,
-      utm_medium: r.utm_medium,
-      utm_campaign: r.utm_campaign,
-    }));
+  const sales: SaleRecord[] = (data || []).map((r: any) => ({
+    transaction_code: r.transaction_code,
+    product_id: r.product_id,
+    product_name: r.product_name,
+    family,
+    customer_email: r.customer_email,
+    customer_name: r.customer_name,
+    status: r.status,
+    approved_at: r.approved_at,
+    bruto: Number(r.bruto) || 0,
+    liquido: Number(r.liquido) || 0,
+    taxa_hotmart: Number(r.taxa_hotmart) || 0,
+    payment_type: normalizePaymentMethod(r.payment_type),
+    installments: Number(r.installments) || 1,
+    purchase_sequence: Number(r.purchase_sequence) || 1,
+    is_recompra: Boolean(r.is_recompra),
+  }));
+  return { sales, total: count ?? sales.length };
 }
 
 /**
@@ -654,7 +618,7 @@ export async function getProductSalesDetail(
  * - Extrato de Transações do período
  */
 export async function getFinancialData(
-  range: RangeKey = "all",
+  range: RangeKey = "30",
   customFrom?: string | null,
   customTo?: string | null,
 ): Promise<FinancialData> {

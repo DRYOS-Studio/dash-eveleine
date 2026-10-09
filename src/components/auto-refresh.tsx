@@ -42,14 +42,14 @@ export function AutoRefresh({ intervalMinutes = 5 }: { intervalMinutes?: number 
           className={`h-2 w-2 rounded-full transition-colors ${
             isPending ? "bg-[var(--color-oak)] animate-ping" : "bg-[var(--color-good)]"
           }`}
-          title="Conexão em Tempo Real"
+          title="Atualização automática da página"
         />
         <span>
           {isPending
             ? "Atualizando dados..."
             : minutesAgo === 0
-              ? "Atualizado recentemente"
-              : `Atualizado há ${minutesAgo}m`}
+              ? `Atualizado agora · a cada ${intervalMinutes} min`
+              : `Atualizado há ${minutesAgo}m · a cada ${intervalMinutes} min`}
         </span>
       </span>
       <button

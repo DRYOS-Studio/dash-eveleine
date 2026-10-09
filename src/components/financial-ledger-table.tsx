@@ -6,9 +6,11 @@ import { cf, nf } from "@/components/ui";
 
 interface Props {
   transactions: FinancialTransactionItem[];
+  /** Total de vendas no período (a lista traz só as mais recentes). */
+  total: number;
 }
 
-export function FinancialLedgerTable({ transactions }: Props) {
+export function FinancialLedgerTable({ transactions, total }: Props) {
   const [search, setSearch] = useState("");
   const [selectedMethod, setSelectedMethod] = useState("TODOS");
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,6 +60,13 @@ export function FinancialLedgerTable({ transactions }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      {total > transactions.length && (
+        <p className="text-xs text-[var(--color-mute)]">
+          Exibindo as {nf(transactions.length)} vendas mais recentes de {nf(total)} no período.
+          A busca e o filtro valem só para estas.
+        </p>
+      )}
+
       {/* Controles de Busca e Filtro */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 max-w-md">
@@ -170,7 +179,7 @@ export function FinancialLedgerTable({ transactions }: Props) {
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <div className="font-medium text-[var(--color-ink)]">{t.payment_type}</div>
                       <div className="font-mono text-[10px] text-[var(--color-mute)]">
-                        {t.installments > 1 ? `${t.installments}x` : "1x à vista"}
+                        {`${t.installments}x`}
                       </div>
                     </td>
                     <td className="py-2.5 pr-3 text-right font-mono font-medium text-[var(--color-ink)] whitespace-nowrap">
