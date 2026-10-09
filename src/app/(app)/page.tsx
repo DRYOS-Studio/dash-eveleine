@@ -4,7 +4,6 @@ import {
   type RangeKey,
 } from "@/lib/sales-data";
 import {
-  Avisos,
   Card,
   FiltroPeriodo,
   Tile,
@@ -80,12 +79,6 @@ export default async function SalesDashboardPage(props: PageProps) {
           toDate={to ?? null}
         />
       </div>
-
-      <Avisos
-        foreignCount={data.foreignCount}
-        convertidasCount={data.convertidasCount}
-        semDecomposicao={data.semDecomposicao}
-      />
 
       {/* 2. Barra de Síntese (Top KPIs) */}
       <section className="flex flex-col gap-2.5">
