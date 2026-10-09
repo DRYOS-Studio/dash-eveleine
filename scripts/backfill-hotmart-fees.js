@@ -25,54 +25,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const API = "https://developers.hotmart.com/payments/api/v1/";
+const { token, pages, windows } = require("./lib/hotmart");
+
 const r2 = (n) => Math.round(n * 100) / 100;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function getJson(url, options, attempt = 0) {
-  const res = await fetch(url, options);
-  if (res.status === 429 && attempt < 5) {
-    await sleep(5000 * (attempt + 1));
-    return getJson(url, options, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`${res.status} ${url.split("?")[0]}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
-async function token() {
-  const d = await getJson(
-    "https://api-sec-vlc.hotmart.com/security/oauth/token?grant_type=client_credentials",
-    { method: "POST", headers: { Authorization: `Basic ${HOTMART_BASIC}` } },
-  );
-  return d.access_token;
-}
-
-async function pages(path, params, tk) {
-  const out = [];
-  let pageToken = null;
-  do {
-    const q = new URLSearchParams({ ...params, max_results: "500" });
-    if (pageToken) q.set("page_token", pageToken);
-    const d = await getJson(`${API}${path}?${q}`, { headers: { Authorization: `Bearer ${tk}` } });
-    out.push(...d.items);
-    pageToken = d.page_info?.next_page_token || null;
-  } while (pageToken);
-  return out;
-}
-
-// A API recusa janelas longas: usa semestres.
-function windows() {
-  const out = [];
-  const end = Date.now();
-  for (let y = 2024; y <= new Date().getUTCFullYear(); y++) {
-    for (const [m1, m2] of [[0, 6], [6, 12]]) {
-      const a = Date.UTC(y, m1, 1);
-      if (a > end) continue;
-      out.push([a, Math.min(Date.UTC(y, m2, 1) - 1, end)]);
-    }
-  }
-  return out;
-}
 
 async function fetchDb() {
   const rows = [];
@@ -91,7 +46,7 @@ async function fetchDb() {
 
 async function main() {
   console.log(APPLY ? "MODO: APPLY" : "MODO: DRY-RUN (não grava)");
-  const tk = await token();
+  const tk = await token(HOTMART_BASIC);
   const hist = new Map();
   const comm = new Map();
   for (const status of ["APPROVED", "COMPLETE", "REFUNDED", "CHARGEBACK", "PARTIALLY_REFUNDED", "PROTESTED"]) {

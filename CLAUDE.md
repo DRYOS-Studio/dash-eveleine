@@ -24,7 +24,10 @@
 - Dash usa `preco_oferta` como faturamento e `taxa_hotmart_exata` como taxa. `taxa_hotmart` (bruto − líquido) é legado e não deve ser exibida: mistura juros, comissões de terceiros e taxa.
 - Identidade (vendas BRL): `bruto = (bruto − preco_oferta) + taxa_hotmart_exata + outras_comissoes + liquido`.
 - Taxa Hotmart ≈ 9–10% da oferta, igual à vista ou parcelado. Co-produção reduz o líquido (`outras_comissoes`), não a taxa.
-- Só BRL entra nos totais; `moeda` ≠ BRL fica de fora com aviso. Vendas sem decomposição aparecem em aviso na tela.
+- Vendas em moeda estrangeira entram convertidas para BRL (`fonte_taxa = 'api_fx'`, valores já em BRL; a moeda original fica em `moeda`).
+  Líquido = valor recebido em reais do relatório de vendas (CSV) da Hotmart — não existe na API. Estrangeiras sem isso ficam fora, com aviso.
+  Para converter novas: exportar o CSV de vendas e rodar `scripts/backfill-foreign-sales.js <csv>` (dry-run por padrão).
+- Vendas sem decomposição exata aparecem em aviso na tela.
 - Rodar `scripts/backfill-hotmart-fees.js` (dry-run por padrão) periodicamente; o webhook já grava as vendas novas.
 
 ## Recompra

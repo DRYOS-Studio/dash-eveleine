@@ -81,7 +81,11 @@ export default async function FinancialDashboardPage(props: PageProps) {
         />
       </div>
 
-      <Avisos foreignCount={data.foreignCount} semDecomposicao={data.semDecomposicao} />
+      <Avisos
+        foreignCount={data.foreignCount}
+        convertidasCount={data.convertidasCount}
+        semDecomposicao={data.semDecomposicao}
+      />
 
       {/* 2. Top KPIs: Síntese de Caixa & Retenções */}
       <section className="flex flex-col gap-2.5">
@@ -112,7 +116,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
           <Tile label="Outras comissões" valor={cf(synthesis.outrasComissoes, true)}>
             <span className="text-xs text-[var(--color-mute)]">
-              Co-produtor e add-on
+              Co-produtor, add-on e câmbio
             </span>
           </Tile>
 

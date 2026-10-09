@@ -15,7 +15,10 @@ Se uma conta mudar, este arquivo mente até ser corrigido junto.
   paga por fora. **Taxa Hotmart** = comissão exata da Hotmart (`taxa_hotmart_exata`).
   **Outras comissões** = co-produtor e add-on. **Líquido** = o que fica para a conta.
   Faturamento = Taxa Hotmart + Outras comissões + Líquido.
-- **Só reais.** Vendas em moeda estrangeira não entram; a tela avisa quantas ficaram de fora.
+- **Tudo em reais.** Vendas em moeda estrangeira entram convertidas para BRL pela cotação da compra que a
+  Hotmart informa; o líquido é o valor que o vendedor recebeu em reais (a Hotmart paga em USD e converte).
+  Nessas vendas, "Outras comissões" inclui também a diferença cambial. Estrangeiras ainda sem o valor
+  recebido em reais ficam fora, e a tela avisa quantas são.
 - Vendas sem decomposição exata de taxa entram com o valor pago e taxa 0, e a tela avisa quantas são.
 - **Cliente único** = e-mail distinto no período.
 

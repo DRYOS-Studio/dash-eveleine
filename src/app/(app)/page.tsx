@@ -81,7 +81,11 @@ export default async function SalesDashboardPage(props: PageProps) {
         />
       </div>
 
-      <Avisos foreignCount={data.foreignCount} semDecomposicao={data.semDecomposicao} />
+      <Avisos
+        foreignCount={data.foreignCount}
+        convertidasCount={data.convertidasCount}
+        semDecomposicao={data.semDecomposicao}
+      />
 
       {/* 2. Barra de Síntese (Top KPIs) */}
       <section className="flex flex-col gap-2.5">

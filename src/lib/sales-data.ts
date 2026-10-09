@@ -79,8 +79,10 @@ export type DashboardData = {
   from: string | null;
   to: string;
   currentRange: RangeKey;
-  /** Vendas em moeda estrangeira no período, fora de todos os valores. */
+  /** Vendas em moeda estrangeira ainda sem conversão: fora de todos os valores. */
   foreignCount: number;
+  /** Vendas em moeda estrangeira já convertidas para BRL e incluídas nos valores. */
+  convertidasCount: number;
   /** Vendas do período sem decomposição exata de taxa. */
   semDecomposicao: number;
 };
@@ -164,6 +166,7 @@ export type FinancialData = {
   to: string;
   currentRange: RangeKey;
   foreignCount: number;
+  convertidasCount: number;
   semDecomposicao: number;
 };
 
@@ -268,8 +271,9 @@ const TX_COLUMNS = `
   approved_at, bruto, liquido, payment_type, installments, purchase_sequence, is_recompra,
   moeda, preco_oferta, taxa_hotmart_exata, outras_comissoes`;
 
-// Vendas em moeda estrangeira ficam fora: os valores não estão convertidos para BRL.
-const ONLY_BRL = "moeda.is.null,moeda.eq.BRL";
+// Entram vendas em BRL e vendas em moeda estrangeira já convertidas para BRL (fonte_taxa = api_fx,
+// valor recebido em reais). Estrangeiras ainda sem conversão ficam de fora: valor nominal não é BRL.
+const ONLY_BRL = "moeda.is.null,moeda.eq.BRL,fonte_taxa.eq.api_fx";
 
 type TxRow = Record<string, any>;
 
@@ -298,29 +302,43 @@ async function fetchTransactionsData(from: string | null, to: string) {
     .eq("status", "APPROVED")
     .or(ONLY_BRL)
     .lte("approved_at", to);
+  // estrangeiras ainda fora dos valores (sem conversão)
   let foreignQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })
     .eq("status", "APPROVED")
     .neq("moeda", "BRL")
+    .or("fonte_taxa.is.null,fonte_taxa.neq.api_fx")
+    .lte("approved_at", to);
+  // estrangeiras já convertidas para BRL e incluídas nos valores
+  let convertedQuery = supabaseAdmin
+    .from("transactions")
+    .select("transaction_code", { count: "exact", head: true })
+    .eq("status", "APPROVED")
+    .neq("moeda", "BRL")
+    .eq("fonte_taxa", "api_fx")
     .lte("approved_at", to);
 
   if (from) {
     countQuery = countQuery.gte("approved_at", from);
     foreignQuery = foreignQuery.gte("approved_at", from);
+    convertedQuery = convertedQuery.gte("approved_at", from);
   }
 
-  const [countResult, foreignResult, productsResult] = await Promise.all([
+  const [countResult, foreignResult, convertedResult, productsResult] = await Promise.all([
     countQuery,
     foreignQuery,
+    convertedQuery,
     supabaseAdmin.from("products").select("id, name, family, edition"),
   ]);
 
   if (countResult.error) throw countResult.error;
   if (foreignResult.error) throw foreignResult.error;
+  if (convertedResult.error) throw convertedResult.error;
   if (productsResult.error) throw productsResult.error;
 
   const foreignCount = foreignResult.count || 0;
+  const convertidasCount = convertedResult.count || 0;
   const total = countResult.count || 0;
   const productFamilyMap = new Map<string, string>();
   for (const p of productsResult.data || []) {
@@ -328,7 +346,7 @@ async function fetchTransactionsData(from: string | null, to: string) {
   }
 
   if (total === 0) {
-    return { rawRows: [] as TxRow[], productFamilyMap, foreignCount };
+    return { rawRows: [] as TxRow[], productFamilyMap, foreignCount, convertidasCount };
   }
 
   const PAGE_SIZE = 1000;
@@ -359,7 +377,7 @@ async function fetchTransactionsData(from: string | null, to: string) {
     if (b.data) rawRows.push(...(b.data as unknown as TxRow[]));
   }
 
-  return { rawRows, productFamilyMap, foreignCount };
+  return { rawRows, productFamilyMap, foreignCount, convertidasCount };
 }
 
 /** Carrega os dados analíticos completos para alimentar a Dashboard. */
@@ -369,7 +387,7 @@ export async function getDashboardData(
   customTo?: string | null,
 ): Promise<DashboardData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
-  const { rawRows, productFamilyMap, foreignCount } = await fetchTransactionsData(from, to);
+  const { rawRows, productFamilyMap, foreignCount, convertidasCount } = await fetchTransactionsData(from, to);
 
   const rows: SaleRecord[] = rawRows.map((r: any) => ({
     transaction_code: r.transaction_code,
@@ -529,6 +547,7 @@ export async function getDashboardData(
     to,
     currentRange: range,
     foreignCount,
+    convertidasCount,
     semDecomposicao,
   };
 }
@@ -594,7 +613,7 @@ export async function getFinancialData(
 ): Promise<FinancialData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
 
-  const { rawRows, productFamilyMap, foreignCount } = await fetchTransactionsData(from, to);
+  const { rawRows, productFamilyMap, foreignCount, convertidasCount } = await fetchTransactionsData(from, to);
 
   let totalBruto = 0;
   let totalLiquido = 0;
@@ -763,6 +782,7 @@ export async function getFinancialData(
     to,
     currentRange: range,
     foreignCount,
+    convertidasCount,
     semDecomposicao,
   };
 }

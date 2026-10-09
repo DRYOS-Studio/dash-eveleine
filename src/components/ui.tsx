@@ -150,23 +150,31 @@ export function FiltroPeriodo({
   );
 }
 
-/** Avisos de cobertura: o que ficou fora ou sem decomposição exata no período. */
+/** Avisos de cobertura: o que ficou fora, foi convertido ou está sem decomposição exata no período. */
 export function Avisos({
   foreignCount,
+  convertidasCount,
   semDecomposicao,
 }: {
   foreignCount: number;
+  convertidasCount: number;
   semDecomposicao: number;
 }) {
+  const plural = (n: number, um: string, varios: string) => `${nf(n)} ${n === 1 ? um : varios}`;
   const itens: string[] = [];
+  if (convertidasCount > 0) {
+    itens.push(
+      `${plural(convertidasCount, "venda em moeda estrangeira convertida", "vendas em moeda estrangeira convertidas")} para reais pela cotação da Hotmart; o líquido é o valor recebido em reais.`,
+    );
+  }
   if (foreignCount > 0) {
     itens.push(
-      `${nf(foreignCount)} ${foreignCount === 1 ? "venda em moeda estrangeira não incluída" : "vendas em moeda estrangeira não incluídas"} nos valores (sem conversão para BRL).`,
+      `${plural(foreignCount, "venda em moeda estrangeira", "vendas em moeda estrangeira")} ainda sem o valor recebido em reais (vem do relatório de vendas da Hotmart): fora dos valores.`,
     );
   }
   if (semDecomposicao > 0) {
     itens.push(
-      `${nf(semDecomposicao)} ${semDecomposicao === 1 ? "venda ainda sem" : "vendas ainda sem"} a taxa exata da Hotmart: o valor é o pago pelo comprador e a taxa aparece como R$ 0.`,
+      `${plural(semDecomposicao, "venda ainda sem", "vendas ainda sem")} a taxa exata da Hotmart: o valor é o pago pelo comprador e a taxa aparece como R$ 0.`,
     );
   }
   if (itens.length === 0) return null;

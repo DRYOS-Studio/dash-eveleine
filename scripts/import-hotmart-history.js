@@ -10,6 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const XLSX = require("xlsx");
 const { createClient } = require("@supabase/supabase-js");
+const { parseCsv } = require("./lib/hotmart");
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -137,50 +138,6 @@ function parseDate(val) {
   }
   const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
-
-function parseCsv(content) {
-  const lines = content.split("\n").filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-  const delimiter = lines[0].includes(";") ? ";" : ",";
-
-  function parseLine(line) {
-    const res = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (c === delimiter && !inQuotes) {
-        res.push(cur.trim());
-        cur = "";
-      } else {
-        cur += c;
-      }
-    }
-    res.push(cur.trim());
-    return res;
-  }
-
-  const rawHeaders = parseLine(lines[0]).map((h) =>
-    h.replace(/^\uFEFF/, "").replace(/^"|"$/g, "").trim()
-  );
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseLine(lines[i]);
-    const row = {};
-    for (let j = 0; j < rawHeaders.length; j++) {
-      row[rawHeaders[j]] = (cols[j] || "").replace(/^"|"$/g, "").trim();
-    }
-    rows.push(row);
-  }
-  return rows;
 }
 
 async function main() {
