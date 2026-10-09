@@ -119,7 +119,7 @@ export function FinancialLedgerTable({ transactions, total }: Props) {
               <th className="py-2.5 px-3">Cliente</th>
               <th className="py-2.5 px-3">Produto</th>
               <th className="py-2.5 px-3">Meio / Parcelas</th>
-              <th className="py-2.5 pr-3 text-right">Bruto</th>
+              <th className="py-2.5 pr-3 text-right">Faturamento</th>
               <th className="py-2.5 pr-3 text-right">Taxa</th>
               <th className="py-2.5 pr-3 text-right">Líquido</th>
             </tr>

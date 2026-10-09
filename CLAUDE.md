@@ -11,12 +11,21 @@
 ## Fatos do banco (verificados em 2026-10-09)
 
 - Todos os `transaction_code` começam com `HP`; o prefixo não identifica boleto/parcela.
-- `transactions` só tem `APPROVED`: a importação não trouxe estornos.
+- `transactions.status` é `APPROVED`, exceto vendas que a API mostrou como reembolsadas/contestadas (o backfill reconcilia). O dash lê só `APPROVED`.
 - `payment_type` é misto: import grava `Pix`/`Cartão de Crédito`, webhook grava `PIX`/`CREDIT_CARD`.
   A tela normaliza em `normalizePaymentMethod`.
 - `utm_*` estão vazios em 100% das vendas.
 - `installments` do Parcelado Hotmart é o tamanho do plano (constante por comprador+produto); cada linha é uma parcela.
 - Webhook só traz compra aprovada. Sem comissão PRODUCER o webhook rejeita (422): não existe líquido estimado.
+
+## Taxas (fonte: API/webhook da Hotmart)
+
+- `bruto` = valor PAGO pelo comprador (com juros de parcelamento). Os juros não são do produtor e NÃO são exibidos.
+- Dash usa `preco_oferta` como faturamento e `taxa_hotmart_exata` como taxa. `taxa_hotmart` (bruto − líquido) é legado e não deve ser exibida: mistura juros, comissões de terceiros e taxa.
+- Identidade (vendas BRL): `bruto = (bruto − preco_oferta) + taxa_hotmart_exata + outras_comissoes + liquido`.
+- Taxa Hotmart ≈ 9–10% da oferta, igual à vista ou parcelado. Co-produção reduz o líquido (`outras_comissoes`), não a taxa.
+- Só BRL entra nos totais; `moeda` ≠ BRL fica de fora com aviso. Vendas sem decomposição aparecem em aviso na tela.
+- Rodar `scripts/backfill-hotmart-fees.js` (dry-run por padrão) periodicamente; o webhook já grava as vendas novas.
 
 ## Recompra
 

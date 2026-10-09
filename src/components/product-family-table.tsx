@@ -58,8 +58,8 @@ export function ProductFamilyTable({
               <th className="py-2.5 px-3">#</th>
               <th className="py-2.5 pr-4">Família de Produto</th>
               <th className="py-2.5 pr-4 text-right">Vendas</th>
-              <th className="py-2.5 pr-4 text-right">Receita Bruta</th>
-              <th className="py-2.5 pr-4 text-right">Receita Líquida</th>
+              <th className="py-2.5 pr-4 text-right">Faturamento</th>
+              <th className="py-2.5 pr-4 text-right">Líquido</th>
               <th className="py-2.5 pr-4 text-right">Ticket Médio</th>
               <th className="py-2.5 pr-3 text-right">Share Líquido</th>
             </tr>
@@ -164,7 +164,7 @@ export function ProductFamilyTable({
                         <th className="py-2 pr-3">Cliente</th>
                         <th className="py-2 pr-3">Tipo</th>
                         <th className="py-2 pr-3">Pagamento</th>
-                        <th className="py-2 pr-3 text-right">Bruto</th>
+                        <th className="py-2 pr-3 text-right">Faturamento</th>
                         <th className="py-2 pr-3 text-right">Líquido</th>
                         <th className="py-2 pr-3 text-right">Transação</th>
                       </tr>

@@ -22,7 +22,7 @@ export function LatestSalesFeed({ sales }: { sales: SaleRecord[] }) {
             <th className="py-2.5 pr-4">Cliente</th>
             <th className="py-2.5 pr-4">Tipo</th>
             <th className="py-2.5 pr-4">Pagamento</th>
-            <th className="py-2.5 pr-4 text-right">Bruto</th>
+            <th className="py-2.5 pr-4 text-right">Faturamento</th>
             <th className="py-2.5 pr-4 text-right">Líquido</th>
             <th className="py-2.5 pr-3 text-right">Transação</th>
           </tr>

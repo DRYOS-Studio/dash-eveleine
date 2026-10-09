@@ -149,3 +149,32 @@ export function FiltroPeriodo({
     </div>
   );
 }
+
+/** Avisos de cobertura: o que ficou fora ou sem decomposição exata no período. */
+export function Avisos({
+  foreignCount,
+  semDecomposicao,
+}: {
+  foreignCount: number;
+  semDecomposicao: number;
+}) {
+  const itens: string[] = [];
+  if (foreignCount > 0) {
+    itens.push(
+      `${nf(foreignCount)} ${foreignCount === 1 ? "venda em moeda estrangeira não incluída" : "vendas em moeda estrangeira não incluídas"} nos valores (sem conversão para BRL).`,
+    );
+  }
+  if (semDecomposicao > 0) {
+    itens.push(
+      `${nf(semDecomposicao)} ${semDecomposicao === 1 ? "venda ainda sem" : "vendas ainda sem"} a taxa exata da Hotmart: o valor é o pago pelo comprador e a taxa aparece como R$ 0.`,
+    );
+  }
+  if (itens.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-clay)]/5 px-4 py-2.5 text-xs text-[var(--color-ink-soft)] leading-relaxed">
+      {itens.map((t) => (
+        <p key={t}>{t}</p>
+      ))}
+    </div>
+  );
+}

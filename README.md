@@ -17,13 +17,14 @@ Dashboard de vendas da Hotmart. Duas telas, só leitura, acesso por senha única
 ## Fluxo dos dados
 
 1. **Histórico:** `scripts/import-hotmart-history.js` importa CSV/XLSX exportados da Hotmart;
-   `scripts/recalc-customer-history.js` recalcula recompra e acumulados do cliente.
+   `scripts/recalc-customer-history.js` recalcula recompra e acumulados do cliente;
+   `scripts/backfill-hotmart-fees.js` preenche taxa exata e comissões pela API da Hotmart.
 2. **Tempo real:** a Hotmart chama `POST /api/webhooks/hotmart` (header `X-HOTMART-HOTTOK`).
    Cada evento é gravado em `webhook_events`; vendas aprovadas viram linhas em `transactions`.
 3. **Leitura:** as telas leem `transactions` (apenas `status = APPROVED`) e `products`
    (família) em `src/lib/sales-data.ts`.
 
-Tabelas: `transactions`, `products`, `customers`, `webhook_events`.
+Tabelas: `transactions`, `products`, `customers`, `webhook_events`. Migrations em `docs/migrations/`.
 
 ## Variáveis de ambiente
 
@@ -35,6 +36,7 @@ Copie `.env.example` para `.env.local` (e `.dev.vars` para o preview do Worker):
 | `HOTMART_HOTTOK` | Token do webhook |
 | `DASHBOARD_PASSWORD` | Senha de acesso |
 | `AUTH_SECRET` | Segredo do HMAC do cookie (ausente = erro, sem fallback) |
+| `HOTMART_BASIC` | Credencial da API Hotmart (só os scripts) |
 
 ## Comandos
 

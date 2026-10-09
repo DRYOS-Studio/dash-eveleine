@@ -1,31 +1,36 @@
 # Indicadores — o que cada número mede
 
 Todos saem de `src/lib/sales-data.ts`. Base: vendas com `status = APPROVED` em `transactions`.
+A decomposição de taxas vem da API/webhook da Hotmart (ver `CLAUDE.md`).
 Se uma conta mudar, este arquivo mente até ser corrigido junto.
 
 ## Escopo e limites
 
-- **Só vendas aprovadas.** O webhook da Hotmart só envia compra aprovada: estornos e
-  reembolsos não entram em nenhum número.
+- **Só vendas aprovadas.** O webhook da Hotmart só envia compra aprovada: reembolsos,
+  chargebacks e contestações posteriores só saem dos números quando `scripts/backfill-hotmart-fees.js`
+  reconcilia o status.
 - **Período:** filtra por `approved_at`, em horário de São Paulo (UTC−3 fixo). Padrão: 30 dias.
   "7 dias" = hoje + 6 dias anteriores. O dia final de um intervalo personalizado entra inteiro.
-- **Faturamento bruto** = valor da venda. **Líquido** = comissão do produtor.
-  **Taxa Hotmart / Retenção** = bruto − líquido.
+- **Faturamento** = preço da oferta (`preco_oferta`), sem os juros de parcelamento que o comprador
+  paga por fora. **Taxa Hotmart** = comissão exata da Hotmart (`taxa_hotmart_exata`).
+  **Outras comissões** = co-produtor e add-on. **Líquido** = o que fica para a conta.
+  Faturamento = Taxa Hotmart + Outras comissões + Líquido.
+- **Só reais.** Vendas em moeda estrangeira não entram; a tela avisa quantas ficaram de fora.
+- Vendas sem decomposição exata de taxa entram com o valor pago e taxa 0, e a tela avisa quantas são.
 - **Cliente único** = e-mail distinto no período.
 
 ## Vendas & Retenção (`/`)
 
 | Indicador | Conta |
 |---|---|
-| Ticket médio / mediana | Bruto ÷ vendas; mediana do bruto por venda |
+| Ticket médio / mediana | Faturamento ÷ vendas; mediana do faturamento por venda |
 | Clientes únicos → "com recompra" | E-mails com ao menos uma venda de recompra no período |
 | Taxa de recompra | Clientes com recompra ÷ clientes únicos |
-| Receita bruta por cliente | Bruto ÷ clientes únicos do período (não é LTV) |
+| Faturamento por cliente | Faturamento ÷ clientes únicos do período (não é LTV) |
 | Cenário A "sem recompra" | Vendas com `is_recompra = false` |
 | Cenário B "recompra" | Vendas com `is_recompra = true` |
 | Participação da recompra | Líquido de B ÷ líquido total; B ÷ total de vendas |
 | Famílias | Agrupado por `products.family`, ordenado por líquido |
-| Parcelamento no cartão | Vendas em Cartão de Crédito por nº de parcelas (1x a 12x) |
 
 **Recompra** = primeira compra de um produto por quem já tinha comprado **outro** produto
 em instante anterior. Parcelas, repetições do mesmo produto e compras simultâneas
@@ -36,8 +41,8 @@ em instante anterior. Parcelas, repetições do mesmo produto e compras simultâ
 
 | Indicador | Conta |
 |---|---|
-| Margem líquida | Líquido ÷ bruto |
-| Meios de pagamento | `payment_type` normalizado (`normalizePaymentMethod`); eficiência = líquido ÷ bruto |
+| Taxa Hotmart % | Taxa Hotmart ÷ faturamento (por meio de pagamento e por nº de parcelas no cartão) |
+| Meios de pagamento | `payment_type` normalizado (`normalizePaymentMethod`); faturamento, taxa, outras comissões e líquido |
 | Parcelado Hotmart | Vendas com meio "Parcelado Hotmart". No banco cada venda é uma parcela; `installments` é o tamanho do plano |
-| Eficiência no cartão | Taxa média e líquido ÷ bruto por nº de parcelas |
+| Taxa no cartão | Taxa Hotmart ÷ faturamento por nº de parcelas (~9% em qualquer parcelamento) |
 | Extrato | As 200 vendas mais recentes do período (a tela informa o total) |

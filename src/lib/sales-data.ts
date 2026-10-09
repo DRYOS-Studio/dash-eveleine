@@ -22,6 +22,9 @@ export type SaleRecord = {
   installments: number;
   purchase_sequence: number;
   is_recompra: boolean;
+  outras_comissoes: number;
+  /** false = venda ainda sem decomposição exata de taxa (bruto = valor pago, taxa = 0). */
+  decomposta: boolean;
 };
 
 export type SynthesisMetrics = {
@@ -36,6 +39,7 @@ export type SynthesisMetrics = {
   ticketMedioBruto: number;
   ticketMedianoBruto: number;
   ltvMedioBruto: number;
+  outrasComissoes: number;
 };
 
 export type ScenarioMetrics = {
@@ -57,21 +61,6 @@ export type FamilyMetric = {
   shareLiquido: number;
 };
 
-export type PaymentMethodMetric = {
-  method: string;
-  transacoes: number;
-  bruto: number;
-  liquido: number;
-  ticketMedio: number;
-  eficienciaPct: number; // liquido / bruto * 100
-};
-
-export type InstallmentMetric = {
-  installments: number;
-  transacoes: number;
-  bruto: number;
-};
-
 export type DaySeries = {
   date: string;
   bruto: number;
@@ -85,13 +74,15 @@ export type DashboardData = {
   cenarioRecompra: ScenarioMetrics;
   shareLiquidoRecompra: number;
   families: FamilyMetric[];
-  payments: PaymentMethodMetric[];
-  installments: InstallmentMetric[];
   dailySeries: DaySeries[];
   latestSales: SaleRecord[];
   from: string | null;
   to: string;
   currentRange: RangeKey;
+  /** Vendas em moeda estrangeira no período, fora de todos os valores. */
+  foreignCount: number;
+  /** Vendas do período sem decomposição exata de taxa. */
+  semDecomposicao: number;
 };
 
 export type FinancialSynthesisMetrics = {
@@ -100,6 +91,7 @@ export type FinancialSynthesisMetrics = {
   retencaoTotal: number;
   pctRetencao: number;
   margemLiquida: number;
+  outrasComissoes: number;
   totalTransacoes: number;
   clientesUnicos: number;
   ticketMedioBruto: number;
@@ -112,8 +104,9 @@ export type FinancialPaymentMethod = {
   bruto: number;
   liquido: number;
   taxa: number;
+  outras: number;
   ticketMedio: number;
-  eficienciaPct: number;
+  taxaPct: number;
   shareReceitaBruta: number;
   shareVolume: number;
 };
@@ -141,7 +134,6 @@ export type CardInstallmentDetail = {
   bruto: number;
   liquido: number;
   taxaRetida: number;
-  eficienciaPct: number;
   taxaMediaPct: number;
   ticketMedio: number;
 };
@@ -158,6 +150,7 @@ export type FinancialTransactionItem = {
   bruto: number;
   liquido: number;
   taxa_hotmart: number;
+  outras_comissoes: number;
   is_recompra: boolean;
 };
 
@@ -170,6 +163,8 @@ export type FinancialData = {
   from: string | null;
   to: string;
   currentRange: RangeKey;
+  foreignCount: number;
+  semDecomposicao: number;
 };
 
 export function normalizePaymentMethod(raw: string | null | undefined): string {
@@ -268,26 +263,64 @@ export function resolveDateRange(
   return { from: start.toISOString(), to };
 }
 
+const TX_COLUMNS = `
+  transaction_code, product_id, product_name, customer_email, customer_name, status,
+  approved_at, bruto, liquido, payment_type, installments, purchase_sequence, is_recompra,
+  moeda, preco_oferta, taxa_hotmart_exata, outras_comissoes`;
+
+// Vendas em moeda estrangeira ficam fora: os valores não estão convertidos para BRL.
+const ONLY_BRL = "moeda.is.null,moeda.eq.BRL";
+
+type TxRow = Record<string, any>;
+
+/**
+ * Valores da venda na convenção do dash:
+ *  - bruto = preço da oferta (sem os juros de parcelamento pagos pelo comprador)
+ *  - taxa_hotmart = comissão exata da Hotmart
+ * Sem decomposição (preco_oferta nulo) cai no valor pago e conta em `semDecomposicao`.
+ */
+function money(r: TxRow) {
+  const decomposta = r.taxa_hotmart_exata != null && r.preco_oferta != null;
+  return {
+    bruto: Number(decomposta ? r.preco_oferta : r.bruto) || 0,
+    liquido: Number(r.liquido) || 0,
+    taxa_hotmart: decomposta ? Number(r.taxa_hotmart_exata) || 0 : 0,
+    outras_comissoes: decomposta ? Number(r.outras_comissoes) || 0 : 0,
+    decomposta,
+  };
+}
+
 /** Carrega transações e metadados de produtos em paralelo com alta eficiência. */
 async function fetchTransactionsData(from: string | null, to: string) {
   let countQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })
     .eq("status", "APPROVED")
+    .or(ONLY_BRL)
+    .lte("approved_at", to);
+  let foreignQuery = supabaseAdmin
+    .from("transactions")
+    .select("transaction_code", { count: "exact", head: true })
+    .eq("status", "APPROVED")
+    .neq("moeda", "BRL")
     .lte("approved_at", to);
 
   if (from) {
     countQuery = countQuery.gte("approved_at", from);
+    foreignQuery = foreignQuery.gte("approved_at", from);
   }
 
-  const [countResult, productsResult] = await Promise.all([
+  const [countResult, foreignResult, productsResult] = await Promise.all([
     countQuery,
+    foreignQuery,
     supabaseAdmin.from("products").select("id, name, family, edition"),
   ]);
 
   if (countResult.error) throw countResult.error;
+  if (foreignResult.error) throw foreignResult.error;
   if (productsResult.error) throw productsResult.error;
 
+  const foreignCount = foreignResult.count || 0;
   const total = countResult.count || 0;
   const productFamilyMap = new Map<string, string>();
   for (const p of productsResult.data || []) {
@@ -295,7 +328,7 @@ async function fetchTransactionsData(from: string | null, to: string) {
   }
 
   if (total === 0) {
-    return { rawRows: [], productFamilyMap };
+    return { rawRows: [] as TxRow[], productFamilyMap, foreignCount };
   }
 
   const PAGE_SIZE = 1000;
@@ -304,23 +337,9 @@ async function fetchTransactionsData(from: string | null, to: string) {
   const pagePromises = Array.from({ length: numPages }, (_, page) => {
     let q = supabaseAdmin
       .from("transactions")
-      .select(`
-        transaction_code,
-        product_id,
-        product_name,
-        customer_email,
-        customer_name,
-        status,
-        approved_at,
-        bruto,
-        liquido,
-        taxa_hotmart,
-        payment_type,
-        installments,
-        purchase_sequence,
-        is_recompra
-      `)
+      .select(TX_COLUMNS)
       .eq("status", "APPROVED")
+      .or(ONLY_BRL)
       .lte("approved_at", to)
       // desempate por transaction_code: sem ele, vendas no mesmo instante podem duplicar/sumir entre páginas
       .order("approved_at", { ascending: false })
@@ -334,13 +353,13 @@ async function fetchTransactionsData(from: string | null, to: string) {
   });
 
   const batches = await Promise.all(pagePromises);
-  const rawRows: any[] = [];
+  const rawRows: TxRow[] = [];
   for (const b of batches) {
     if (b.error) throw b.error;
-    if (b.data) rawRows.push(...b.data);
+    if (b.data) rawRows.push(...(b.data as unknown as TxRow[]));
   }
 
-  return { rawRows, productFamilyMap };
+  return { rawRows, productFamilyMap, foreignCount };
 }
 
 /** Carrega os dados analíticos completos para alimentar a Dashboard. */
@@ -350,7 +369,7 @@ export async function getDashboardData(
   customTo?: string | null,
 ): Promise<DashboardData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
-  const { rawRows, productFamilyMap } = await fetchTransactionsData(from, to);
+  const { rawRows, productFamilyMap, foreignCount } = await fetchTransactionsData(from, to);
 
   const rows: SaleRecord[] = rawRows.map((r: any) => ({
     transaction_code: r.transaction_code,
@@ -361,9 +380,7 @@ export async function getDashboardData(
     customer_name: r.customer_name,
     status: r.status,
     approved_at: r.approved_at,
-    bruto: Number(r.bruto) || 0,
-    liquido: Number(r.liquido) || 0,
-    taxa_hotmart: Number(r.taxa_hotmart) || 0,
+    ...money(r),
     payment_type: normalizePaymentMethod(r.payment_type),
     installments: Number(r.installments) || 1,
     purchase_sequence: Number(r.purchase_sequence) || 1,
@@ -374,6 +391,8 @@ export async function getDashboardData(
   let totalBruto = 0;
   let totalLiquido = 0;
   let totalTaxa = 0;
+  let totalOutras = 0;
+  let semDecomposicao = 0;
   const customersSet = new Set<string>();
   const recompradoresSet = new Set<string>();
   const brutosList: number[] = [];
@@ -390,12 +409,6 @@ export async function getDashboardData(
   // Famílias
   const familyMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
 
-  // Meios de Pagamento
-  const payMap = new Map<string, { transacoes: number; bruto: number; liquido: number }>();
-
-  // Parcelamento
-  const instMap = new Map<number, { transacoes: number; bruto: number }>();
-
   // Série diária
   const dayMap = new Map<string, { bruto: number; liquido: number; count: number }>();
 
@@ -403,6 +416,8 @@ export async function getDashboardData(
     totalBruto += row.bruto;
     totalLiquido += row.liquido;
     totalTaxa += row.taxa_hotmart;
+    totalOutras += row.outras_comissoes;
+    if (!row.decomposta) semDecomposicao++;
     customersSet.add(row.customer_email);
     brutosList.push(row.bruto);
 
@@ -425,23 +440,6 @@ export async function getDashboardData(
     fam.liquido += row.liquido;
     fam.taxa += row.taxa_hotmart;
     familyMap.set(famKey, fam);
-
-    // Meio de pagamento
-    const payKey = normalizePaymentMethod(row.payment_type);
-    const pay = payMap.get(payKey) || { transacoes: 0, bruto: 0, liquido: 0 };
-    pay.transacoes += 1;
-    pay.bruto += row.bruto;
-    pay.liquido += row.liquido;
-    payMap.set(payKey, pay);
-
-    // Parcelas no cartão de crédito
-    if (payKey === "Cartão de Crédito") {
-      const n = Math.min(Math.max(1, row.installments), 12);
-      const inst = instMap.get(n) || { transacoes: 0, bruto: 0 };
-      inst.transacoes += 1;
-      inst.bruto += row.bruto;
-      instMap.set(n, inst);
-    }
 
     // Dia (YYYY-MM-DD em SP)
     const spDate = new Date(new Date(row.approved_at).getTime() - TZ_OFFSET_HOURS * 3600_000);
@@ -469,6 +467,7 @@ export async function getDashboardData(
     ticketMedioBruto: totalTransacoes > 0 ? totalBruto / totalTransacoes : 0,
     ticketMedianoBruto: median(brutosList),
     ltvMedioBruto: clientesUnicos > 0 ? totalBruto / clientesUnicos : 0,
+    outrasComissoes: totalOutras,
   };
 
   const cenarioUnica: ScenarioMetrics = {
@@ -505,29 +504,6 @@ export async function getDashboardData(
     }))
     .sort((a, b) => b.receitaLiquida - a.receitaLiquida);
 
-  // Pagamentos ordenados por volume financeiro
-  const payments: PaymentMethodMetric[] = [...payMap.entries()]
-    .map(([method, data]) => ({
-      method,
-      transacoes: data.transacoes,
-      bruto: data.bruto,
-      liquido: data.liquido,
-      ticketMedio: data.transacoes > 0 ? data.bruto / data.transacoes : 0,
-      eficienciaPct: data.bruto > 0 ? (data.liquido / data.bruto) * 100 : 0,
-    }))
-    .sort((a, b) => b.bruto - a.bruto);
-
-  // Parcelas 1 a 12
-  const installments: InstallmentMetric[] = [];
-  for (let i = 1; i <= 12; i++) {
-    const inst = instMap.get(i) || { transacoes: 0, bruto: 0 };
-    installments.push({
-      installments: i,
-      transacoes: inst.transacoes,
-      bruto: inst.bruto,
-    });
-  }
-
   // Série temporal ordenada por data
   const dailySeries: DaySeries[] = [...dayMap.entries()]
     .map(([date, data]) => ({
@@ -547,13 +523,13 @@ export async function getDashboardData(
     cenarioRecompra,
     shareLiquidoRecompra,
     families,
-    payments,
-    installments,
     dailySeries,
     latestSales,
     from,
     to,
     currentRange: range,
+    foreignCount,
+    semDecomposicao,
   };
 }
 
@@ -575,13 +551,9 @@ export async function getProductSalesDetail(
 
   let query = supabaseAdmin
     .from("transactions")
-    .select(
-      `transaction_code, product_id, product_name, customer_email, customer_name, status,
-       approved_at, bruto, liquido, taxa_hotmart, payment_type, installments,
-       purchase_sequence, is_recompra`,
-      { count: "exact" },
-    )
+    .select(TX_COLUMNS, { count: "exact" })
     .eq("status", "APPROVED")
+    .or(ONLY_BRL)
     .in("product_id", productIds)
     .lte("approved_at", to);
   if (from) query = query.gte("approved_at", from);
@@ -598,9 +570,7 @@ export async function getProductSalesDetail(
     customer_name: r.customer_name,
     status: r.status,
     approved_at: r.approved_at,
-    bruto: Number(r.bruto) || 0,
-    liquido: Number(r.liquido) || 0,
-    taxa_hotmart: Number(r.taxa_hotmart) || 0,
+    ...money(r),
     payment_type: normalizePaymentMethod(r.payment_type),
     installments: Number(r.installments) || 1,
     purchase_sequence: Number(r.purchase_sequence) || 1,
@@ -624,14 +594,16 @@ export async function getFinancialData(
 ): Promise<FinancialData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
 
-  const { rawRows, productFamilyMap } = await fetchTransactionsData(from, to);
+  const { rawRows, productFamilyMap, foreignCount } = await fetchTransactionsData(from, to);
 
   let totalBruto = 0;
   let totalLiquido = 0;
   let totalTaxa = 0;
+  let totalOutras = 0;
+  let semDecomposicao = 0;
   const customersSet = new Set<string>();
 
-  const payMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
+  const payMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number; outras: number }>();
   const cardMap = new Map<number, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
   const parceladoMap = new Map<number, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
   const parceladoBuyers = new Set<string>();
@@ -643,23 +615,25 @@ export async function getFinancialData(
   const transactions: FinancialTransactionItem[] = [];
 
   for (const r of rawRows) {
-    const bruto = Number(r.bruto) || 0;
-    const liquido = Number(r.liquido) || 0;
-    const taxa = Number(r.taxa_hotmart) || 0;
+    const m = money(r);
+    const { bruto, liquido, taxa_hotmart: taxa, outras_comissoes: outras } = m;
     const normPay = normalizePaymentMethod(r.payment_type);
     const installments = Math.max(1, Number(r.installments) || 1);
 
     totalBruto += bruto;
     totalLiquido += liquido;
     totalTaxa += taxa;
+    totalOutras += outras;
+    if (!m.decomposta) semDecomposicao++;
     customersSet.add(r.customer_email);
 
     // Meios de pagamento
-    const pData = payMap.get(normPay) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0 };
+    const pData = payMap.get(normPay) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0, outras: 0 };
     pData.transacoes += 1;
     pData.bruto += bruto;
     pData.liquido += liquido;
     pData.taxa += taxa;
+    pData.outras += outras;
     payMap.set(normPay, pData);
 
     // Cartão de Crédito
@@ -703,6 +677,7 @@ export async function getFinancialData(
         bruto,
         liquido,
         taxa_hotmart: taxa,
+        outras_comissoes: outras,
         is_recompra: Boolean(r.is_recompra),
       });
     }
@@ -717,6 +692,7 @@ export async function getFinancialData(
     retencaoTotal: totalTaxa,
     pctRetencao: totalBruto > 0 ? (totalTaxa / totalBruto) * 100 : 0,
     margemLiquida: totalBruto > 0 ? (totalLiquido / totalBruto) * 100 : 0,
+    outrasComissoes: totalOutras,
     totalTransacoes,
     clientesUnicos,
     ticketMedioBruto: totalTransacoes > 0 ? totalBruto / totalTransacoes : 0,
@@ -730,8 +706,9 @@ export async function getFinancialData(
       bruto: data.bruto,
       liquido: data.liquido,
       taxa: data.taxa,
+      outras: data.outras,
       ticketMedio: data.transacoes > 0 ? data.bruto / data.transacoes : 0,
-      eficienciaPct: data.bruto > 0 ? (data.liquido / data.bruto) * 100 : 0,
+      taxaPct: data.bruto > 0 ? (data.taxa / data.bruto) * 100 : 0,
       shareReceitaBruta: totalBruto > 0 ? (data.bruto / totalBruto) * 100 : 0,
       shareVolume: totalTransacoes > 0 ? (data.transacoes / totalTransacoes) * 100 : 0,
     }))
@@ -746,7 +723,6 @@ export async function getFinancialData(
       bruto: data.bruto,
       liquido: data.liquido,
       taxaRetida: data.taxa,
-      eficienciaPct: data.bruto > 0 ? (data.liquido / data.bruto) * 100 : 0,
       taxaMediaPct: data.bruto > 0 ? (data.taxa / data.bruto) * 100 : 0,
       ticketMedio: data.transacoes > 0 ? data.bruto / data.transacoes : 0,
     });
@@ -786,6 +762,8 @@ export async function getFinancialData(
     from,
     to,
     currentRange: range,
+    foreignCount,
+    semDecomposicao,
   };
 }
 

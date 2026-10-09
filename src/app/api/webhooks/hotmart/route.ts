@@ -32,6 +32,7 @@ type HotmartWebhookPayload = {
       price?: {
         value?: number;
         currency_value?: string;
+        currency_code?: string;
       };
       full_price?: {
         value?: number;
@@ -168,7 +169,22 @@ export async function POST(req: NextRequest) {
     }
     const liquido = producerComm.value;
 
-    const taxaHotmart = Math.max(0, Math.round((bruto - liquido) * 100) / 100);
+    const taxaHotmart = Math.max(0, Math.round((bruto - liquido) * 100) / 100); // legado: bruto − líquido
+
+    // Decomposição exata. bruto (valor pago) = juros do comprador + taxa Hotmart + outras comissões + líquido.
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const moeda = data.purchase.price?.currency_code || data.purchase.price?.currency_value || null;
+    const precoOferta = data.purchase.price?.value;
+    const marketplace = data.commissions?.find((c) => c.source === "MARKETPLACE");
+    const outras = (data.commissions ?? [])
+      .filter((c) => c.source !== "MARKETPLACE" && c.source !== "PRODUCER")
+      .reduce((acc, c) => acc + (c.value || 0), 0);
+    const decomposed =
+      moeda === "BRL" &&
+      typeof precoOferta === "number" &&
+      typeof marketplace?.value === "number" &&
+      Math.abs(precoOferta - (marketplace.value + outras + liquido)) <= 0.05;
+
 
     // Data de aprovação
     let approvedAt = new Date().toISOString();
@@ -268,6 +284,11 @@ export async function POST(req: NextRequest) {
       is_recompra: isRecompra,
       days_since_first_purchase: daysSinceFirst,
       days_since_prev_purchase: daysSincePrev,
+      moeda,
+      preco_oferta: decomposed ? r2(precoOferta!) : null,
+      taxa_hotmart_exata: decomposed ? r2(marketplace!.value!) : null,
+      outras_comissoes: decomposed ? r2(outras) : null,
+      fonte_taxa: decomposed ? "webhook" : null,
       tracking_source: data.origin?.sck || data.origin?.src || data.purchase.tracking?.source || null,
       utm_source: data.origin?.utm_source || null,
       utm_medium: data.origin?.utm_medium || null,

@@ -4,6 +4,7 @@ import {
   type RangeKey,
 } from "@/lib/sales-data";
 import {
+  Avisos,
   Card,
   FiltroPeriodo,
   Tile,
@@ -63,7 +64,7 @@ export default async function SalesDashboardPage(props: PageProps) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-sm text-[var(--color-mute)]">
-              Vendas aprovadas na Hotmart. Estornos e reembolsos não são recebidos.
+              Vendas aprovadas na Hotmart, em reais. Faturamento = preço da oferta, sem os juros de parcelamento. Estornos e reembolsos não são recebidos.
             </p>
             <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
             <AutoRefresh intervalMinutes={5} />
@@ -80,16 +81,18 @@ export default async function SalesDashboardPage(props: PageProps) {
         />
       </div>
 
+      <Avisos foreignCount={data.foreignCount} semDecomposicao={data.semDecomposicao} />
+
       {/* 2. Barra de Síntese (Top KPIs) */}
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-            01 / 05 · Síntese de Receita e Clientes
+            01 / 04 · Síntese de Receita e Clientes
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Tile label="Faturamento Bruto" valor={cf(synthesis.faturamentoBruto, true)}>
+          <Tile label="Faturamento (oferta)" valor={cf(synthesis.faturamentoBruto, true)}>
             <span className="text-xs text-[var(--color-mute)]">
               {nf(synthesis.totalTransacoes)} vendas aprovadas
             </span>
@@ -97,17 +100,17 @@ export default async function SalesDashboardPage(props: PageProps) {
 
           <Tile label="Faturamento Líquido" valor={cf(synthesis.faturamentoLiquido, true)}>
             <span className="text-xs font-medium text-[var(--color-good)]">
-              Comissão do produtor (bruto − taxa)
+              {pf(synthesis.faturamentoBruto > 0 ? (synthesis.faturamentoLiquido / synthesis.faturamentoBruto) * 100 : 0)} do faturamento
             </span>
           </Tile>
 
-          <Tile label="Taxa Hotmart Total" valor={cf(synthesis.taxaHotmartTotal, true)}>
+          <Tile label="Taxa Hotmart" valor={cf(synthesis.taxaHotmartTotal, true)}>
             <span className="text-xs text-[var(--color-mute)]">
-              {pf(synthesis.pctTaxaHotmart)} da receita bruta
+              {pf(synthesis.pctTaxaHotmart)} do faturamento
             </span>
           </Tile>
 
-          <Tile label="Ticket Médio (Bruto)" valor={cf(synthesis.ticketMedioBruto)}>
+          <Tile label="Ticket Médio" valor={cf(synthesis.ticketMedioBruto)}>
             <span className="text-xs text-[var(--color-mute)]">
               Mediana: {cf(synthesis.ticketMedianoBruto)}
             </span>
@@ -121,7 +124,7 @@ export default async function SalesDashboardPage(props: PageProps) {
 
           <Tile label="Taxa de Recompra" valor={pf(synthesis.taxaRecompra)}>
             <span className="text-xs font-semibold text-[var(--color-oak)]">
-              Receita bruta por cliente: {cf(synthesis.ltvMedioBruto)}
+              Faturamento por cliente: {cf(synthesis.ltvMedioBruto)}
             </span>
           </Tile>
         </div>
@@ -132,7 +135,7 @@ export default async function SalesDashboardPage(props: PageProps) {
         <div className="flex items-center justify-between">
           <div>
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-              02 / 05 · Comportamento de Compra
+              02 / 04 · Comportamento de Compra
             </span>
             <h2 className="font-heading text-xl font-bold text-[var(--color-ink)] mt-0.5">
               Sem recompra vs Recompra
@@ -173,8 +176,8 @@ export default async function SalesDashboardPage(props: PageProps) {
                   <p className="text-base sm:text-lg font-heading font-bold text-[var(--color-good)] whitespace-nowrap truncate" title={cf(cenarioUnica.receitaLiquida)}>
                     {cf(cenarioUnica.receitaLiquida, true)}
                   </p>
-                  <span className="text-xs text-[var(--color-mute)] whitespace-nowrap truncate block" title={`Bruto: ${cf(cenarioUnica.receitaBruta)}`}>
-                    Bruto: {cf(cenarioUnica.receitaBruta, true)}
+                  <span className="text-xs text-[var(--color-mute)] whitespace-nowrap truncate block" title={`Faturamento: ${cf(cenarioUnica.receitaBruta)}`}>
+                    Faturamento: {cf(cenarioUnica.receitaBruta, true)}
                   </span>
                 </div>
                 <div className="min-w-0">
@@ -222,8 +225,8 @@ export default async function SalesDashboardPage(props: PageProps) {
                   <p className="text-base sm:text-lg font-heading font-bold text-[#9DBFA8] whitespace-nowrap truncate" title={cf(cenarioRecompra.receitaLiquida)}>
                     {cf(cenarioRecompra.receitaLiquida, true)}
                   </p>
-                  <span className="text-xs text-[#C8D6CB] whitespace-nowrap truncate block" title={`Bruto: ${cf(cenarioRecompra.receitaBruta)}`}>
-                    Bruto: {cf(cenarioRecompra.receitaBruta, true)}
+                  <span className="text-xs text-[#C8D6CB] whitespace-nowrap truncate block" title={`Faturamento: ${cf(cenarioRecompra.receitaBruta)}`}>
+                    Faturamento: {cf(cenarioRecompra.receitaBruta, true)}
                   </span>
                 </div>
                 <div className="min-w-0">
@@ -256,7 +259,7 @@ export default async function SalesDashboardPage(props: PageProps) {
       {/* 4. Produtos & Famílias de Produtos (Interativo por Clique) */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          03 / 05 · Mix de Produtos por Família
+          03 / 04 · Mix de Produtos por Família
         </span>
         <Card
           title="Vendas por família de produto"
@@ -270,7 +273,7 @@ export default async function SalesDashboardPage(props: PageProps) {
       {/* 5. Feed das 20 últimas vendas do período */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          04 / 05 · Últimas Vendas
+          04 / 04 · Últimas Vendas
         </span>
         <Card
           title="Últimas 20 vendas do período"
@@ -279,107 +282,6 @@ export default async function SalesDashboardPage(props: PageProps) {
         >
           <LatestSalesFeed sales={data.latestSales} />
         </Card>
-      </section>
-
-      {/* 6. Meios de Pagamento & Eficiência Líquida */}
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-            05 / 05 · Operação Financeira e Meios de Pagamento
-          </span>
-          <a
-            href="/financeiro"
-            className="font-mono text-xs text-[var(--color-oak)] hover:underline flex items-center gap-1 font-medium"
-          >
-            Ver Análise Financeira Completa &rarr;
-          </a>
-        </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Card
-            title="Eficiência por Meio de Pagamento"
-            sub="Faturamento líquido ÷ faturamento bruto, por meio de pagamento."
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] font-mono uppercase tracking-wider text-[var(--color-mute-soft)]">
-                    <th className="py-2.5 px-3">Meio</th>
-                    <th className="py-2.5 pr-3 text-right">Vendas</th>
-                    <th className="py-2.5 pr-3 text-right">Bruto</th>
-                    <th className="py-2.5 pr-3 text-right">Líquido</th>
-                    <th className="py-2.5 pr-3 text-right">Eficiência</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-line)]">
-                  {data.payments.map((p) => (
-                    <tr key={p.method} className="hover:bg-[var(--color-surface)]/60 transition-colors">
-                      <td className="py-2.5 px-3 font-medium capitalize text-[var(--color-ink)]">{p.method}</td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(p.transacoes)}</td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">
-                        {cf(p.bruto)}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-semibold text-[var(--color-oak)] whitespace-nowrap">
-                        {cf(p.liquido)}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-medium">
-                        {pf(p.eficienciaPct)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          <Card
-            title="Parcelamento no Cartão de Crédito"
-            sub="Vendas no cartão de crédito por número de parcelas escolhido (1x a 12x)."
-          >
-            <div className="flex flex-col gap-2">
-              <div className="space-y-2">
-                {data.installments
-                  .filter((inst) => inst.transacoes > 0)
-                  .map((inst) => {
-                    const maxTx = Math.max(
-                      ...data.installments.map((x) => x.transacoes),
-                      1,
-                    );
-                    const pctBar = (inst.transacoes / maxTx) * 100;
-                    const is12x = inst.installments === 12;
-
-                    return (
-                      <div key={inst.installments} className="flex items-center gap-3 text-xs">
-                        <span className="w-16 font-mono text-[var(--color-mute)]">
-                          {`${inst.installments}x`}
-                        </span>
-                        <div className="flex-1 h-3 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              is12x ? "bg-[var(--color-clay)]" : "bg-[var(--color-oak)]"
-                            }`}
-                            style={{ width: `${pctBar}%` }}
-                          />
-                        </div>
-                        <span className="w-12 text-right font-mono font-medium text-[var(--color-ink)]">
-                          {nf(inst.transacoes)}
-                        </span>
-                        <span className="w-20 text-right font-mono text-[var(--color-mute)]">
-                          {cf(inst.bruto)}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </div>
-
-              {data.installments.every((x) => x.transacoes === 0) && (
-                <p className="py-6 text-center text-xs text-[var(--color-mute)]">
-                  Nenhuma venda com parcelamento registrada no período.
-                </p>
-              )}
-
-            </div>
-          </Card>
-        </div>
       </section>
     </div>
   );

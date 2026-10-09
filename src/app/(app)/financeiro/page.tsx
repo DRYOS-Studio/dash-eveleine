@@ -4,6 +4,7 @@ import {
   type RangeKey,
 } from "@/lib/sales-data";
 import {
+  Avisos,
   Card,
   FiltroPeriodo,
   Tile,
@@ -63,7 +64,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-sm text-[var(--color-mute)]">
-              Taxas retidas, parcelamento no cartão, Parcelado Hotmart e eficiência líquida. Só vendas aprovadas; estornos não são recebidos.
+              Taxa exata da Hotmart, comissões de terceiros, Parcelado Hotmart e parcelamento no cartão. Em reais, só vendas aprovadas; faturamento = preço da oferta, sem juros de parcelamento. Estornos não são recebidos.
             </p>
             <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
             <AutoRefresh intervalMinutes={5} />
@@ -80,16 +81,18 @@ export default async function FinancialDashboardPage(props: PageProps) {
         />
       </div>
 
+      <Avisos foreignCount={data.foreignCount} semDecomposicao={data.semDecomposicao} />
+
       {/* 2. Top KPIs: Síntese de Caixa & Retenções */}
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-            01 / 04 · Síntese de Caixa & Retenção da Plataforma
+            01 / 04 · Síntese: Faturamento, Taxa e Líquido
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Tile label="Faturamento Bruto" valor={cf(synthesis.faturamentoBruto, true)}>
+          <Tile label="Faturamento (oferta)" valor={cf(synthesis.faturamentoBruto, true)}>
             <span className="text-xs text-[var(--color-mute)]">
               {nf(synthesis.totalTransacoes)} vendas aprovadas
             </span>
@@ -97,25 +100,25 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
           <Tile label="Faturamento Líquido" valor={cf(synthesis.faturamentoLiquido, true)}>
             <span className="text-xs font-semibold text-[var(--color-good)]">
-              Comissão do produtor (bruto − taxa)
+              {pf(synthesis.margemLiquida)} do faturamento
             </span>
           </Tile>
 
-          <Tile label="Retenção da Plataforma" valor={cf(synthesis.retencaoTotal, true)}>
+          <Tile label="Taxa Hotmart" valor={cf(synthesis.retencaoTotal, true)}>
             <span className="text-xs text-[var(--color-clay)]">
-              {pf(synthesis.pctRetencao)} do bruto
+              {pf(synthesis.pctRetencao)} do faturamento
             </span>
           </Tile>
 
-          <Tile label="Margem Líquida" valor={pf(synthesis.margemLiquida)}>
-            <span className="text-xs text-[var(--color-oak)] font-medium">
-              Líquido ÷ bruto
+          <Tile label="Outras comissões" valor={cf(synthesis.outrasComissoes, true)}>
+            <span className="text-xs text-[var(--color-mute)]">
+              Co-produtor e add-on
             </span>
           </Tile>
 
           <Tile label="Ticket Médio Líquido" valor={cf(synthesis.ticketMedioLiquido)}>
             <span className="text-xs text-[var(--color-mute)]">
-              Bruto: {cf(synthesis.ticketMedioBruto)}
+              Faturamento: {cf(synthesis.ticketMedioBruto)}
             </span>
           </Tile>
 
@@ -130,11 +133,11 @@ export default async function FinancialDashboardPage(props: PageProps) {
       {/* 3. Raio-X Completo de Meios de Pagamento */}
       <section className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
-          02 / 04 · Eficiência por Meio de Pagamento
+          02 / 04 · Meios de Pagamento
         </span>
         <Card
           title="Meios de pagamento"
-          sub="Faturamento bruto, taxa retida (bruto − líquido) e faturamento líquido por meio de pagamento."
+          sub="Faturamento (oferta), taxa exata da Hotmart, comissões de terceiros e líquido por meio de pagamento."
           wide
         >
           <div className="overflow-x-auto">
@@ -144,11 +147,12 @@ export default async function FinancialDashboardPage(props: PageProps) {
                   <th className="py-2.5 px-3">Meio de Pagamento</th>
                   <th className="py-2.5 pr-3 text-right">Vendas</th>
                   <th className="py-2.5 pr-3 text-right">Share Vol.</th>
-                  <th className="py-2.5 pr-3 text-right">Faturamento Bruto</th>
-                  <th className="py-2.5 pr-3 text-right">Retenção Total</th>
-                  <th className="py-2.5 pr-3 text-right">Faturamento Líquido</th>
+                  <th className="py-2.5 pr-3 text-right">Faturamento</th>
+                  <th className="py-2.5 pr-3 text-right">Taxa Hotmart</th>
+                  <th className="py-2.5 pr-3 text-right">Outras comissões</th>
+                  <th className="py-2.5 pr-3 text-right">Líquido</th>
                   <th className="py-2.5 pr-3 text-right">Ticket Médio</th>
-                  <th className="py-2.5 pr-3 text-right">Eficiência</th>
+                  <th className="py-2.5 pr-3 text-right">Taxa %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-line)]">
@@ -188,6 +192,9 @@ export default async function FinancialDashboardPage(props: PageProps) {
                       <td className="py-3 pr-3 text-right font-mono text-xs text-[var(--color-clay)] whitespace-nowrap">
                         -{cf(p.taxa)}
                       </td>
+                      <td className="py-3 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">
+                        {cf(p.outras)}
+                      </td>
                       <td className="py-3 pr-3 text-right font-mono text-xs font-semibold text-[var(--color-good)] whitespace-nowrap">
                         {cf(p.liquido)}
                       </td>
@@ -195,17 +202,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                         {cf(p.ticketMedio)}
                       </td>
                       <td className="py-3 pr-3 text-right font-mono text-xs whitespace-nowrap font-medium">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${
-                            p.eficienciaPct >= 84
-                              ? "bg-[var(--color-good)]/10 text-[var(--color-good)]"
-                              : p.eficienciaPct >= 72
-                              ? "bg-[var(--color-oak)]/10 text-[var(--color-oak)]"
-                              : "bg-[var(--color-clay)]/10 text-[var(--color-clay)]"
-                          }`}
-                        >
-                          {pf(p.eficienciaPct)}
-                        </span>
+                        {pf(p.taxaPct)}
                       </td>
                     </tr>
                   );
@@ -257,7 +254,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
                 </div>
                 <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] block truncate">
-                    Retenção Total
+                    Taxa Hotmart
                   </span>
                   <span className="font-heading text-lg font-bold text-[var(--color-clay)] whitespace-nowrap">
                     {cf(parceladoHotmart.retencaoTotal, true)}
@@ -310,8 +307,8 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
           {/* Curva de Eficiência no Parcelamento de Cartão */}
           <Card
-            title="Eficiência por parcelas no cartão (1x a 12x)"
-            sub="Taxa média e eficiência (líquido ÷ bruto) das vendas no cartão, por número de parcelas."
+            title="Taxa Hotmart por parcelas no cartão (1x a 12x)"
+            sub="Taxa Hotmart ÷ faturamento (oferta) das vendas no cartão, por número de parcelas."
           >
             <div className="flex flex-col gap-3">
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -345,31 +342,21 @@ export default async function FinancialDashboardPage(props: PageProps) {
 
                         <div className="flex items-center gap-4 text-right">
                           <div className="min-w-[80px]">
-                            <span className="text-[10px] text-[var(--color-mute)] block font-mono">Bruto</span>
+                            <span className="text-[10px] text-[var(--color-mute)] block font-mono">Faturamento</span>
                             <span className="font-mono text-xs font-medium text-[var(--color-ink)] whitespace-nowrap">
                               {cf(inst.bruto, true)}
                             </span>
                           </div>
 
                           <div className="min-w-[70px]">
-                            <span className="text-[10px] text-[var(--color-mute)] block font-mono">Taxa Média</span>
+                            <span className="text-[10px] text-[var(--color-mute)] block font-mono">Taxa Hotmart</span>
                             <span
-                              className={`font-mono text-xs font-semibold whitespace-nowrap ${
-                                inst.taxaMediaPct > 30
-                                  ? "text-[var(--color-clay)]"
-                                  : "text-[var(--color-oak)]"
-                              }`}
+                              className="font-mono text-xs font-semibold whitespace-nowrap text-[var(--color-oak)]"
                             >
                               {pf(inst.taxaMediaPct)}
                             </span>
                           </div>
 
-                          <div className="min-w-[65px]">
-                            <span className="text-[10px] text-[var(--color-mute)] block font-mono">Eficiência</span>
-                            <span className="font-mono text-xs font-semibold text-[var(--color-good)] whitespace-nowrap">
-                              {pf(inst.eficienciaPct)}
-                            </span>
-                          </div>
                         </div>
                       </div>
                     );
