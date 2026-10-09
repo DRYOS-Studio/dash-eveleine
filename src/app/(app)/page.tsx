@@ -64,7 +64,7 @@ export default async function SalesDashboardPage(props: PageProps) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-sm text-[var(--color-mute)]">
-              Vendas aprovadas na Hotmart, em reais. Faturamento = preço da oferta, sem os juros de parcelamento. Estornos e reembolsos não são recebidos.
+              Vendas aprovadas na Hotmart, em reais. Faturamento = preço da oferta, sem os juros de parcelamento.
             </p>
             <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
             <AutoRefresh intervalMinutes={5} />

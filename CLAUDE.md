@@ -38,4 +38,4 @@ Definições dos indicadores em `docs/indicadores.md`.
 
 ## Pendências
 
-Reembolsos, chargebacks e contestações ainda não aparecem no dash (as telas avisam). Detalhes e passos em `docs/pendencias.md`.
+Reembolsos, chargebacks e contestações ainda não aparecem no dash. Detalhes e passos em `docs/pendencias.md`.

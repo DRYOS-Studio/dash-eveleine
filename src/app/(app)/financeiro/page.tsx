@@ -64,7 +64,7 @@ export default async function FinancialDashboardPage(props: PageProps) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-sm text-[var(--color-mute)]">
-              Taxa exata da Hotmart, comissões de terceiros, Parcelado Hotmart e parcelamento no cartão. Em reais, só vendas aprovadas; faturamento = preço da oferta, sem juros de parcelamento. Estornos não são recebidos.
+              Taxa exata da Hotmart, comissões de terceiros, Parcelado Hotmart e parcelamento no cartão. Em reais, só vendas aprovadas; faturamento = preço da oferta, sem juros de parcelamento.
             </p>
             <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
             <AutoRefresh intervalMinutes={5} />

@@ -2,8 +2,7 @@
 
 ## Reembolsos, chargebacks e contestações no `/financeiro`
 
-**Estado hoje:** o dash lê só `status = APPROVED` e não mostra nada sobre perdas. As duas telas
-avisam "Estornos e reembolsos não são recebidos".
+**Estado hoje:** o dash lê só `status = APPROVED` e não mostra nada sobre perdas. As telas não trazem aviso sobre isso.
 
 **O que a API da Hotmart mostra** (consulta em 2026-10-09, histórico 2024 → 2026):
 
@@ -30,4 +29,3 @@ contestação), mas só quando é rodado.
    com status e valores, para o `/financeiro` poder mostrá-las.
 4. Definir o card no `/financeiro`: quantidade e valor perdido por tipo, e taxa de reembolso sobre as vendas
    do período. Decidir se o faturamento exibido passa a descontar essas vendas ou se elas ficam em linha à parte.
-5. Remover o aviso "Estornos e reembolsos não são recebidos" das duas telas quando o item estiver pronto.
