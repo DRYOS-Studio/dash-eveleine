@@ -52,3 +52,18 @@ em instante anterior. Parcelas, repetições do mesmo produto e compras simultâ
 | Parcelado Hotmart | Vendas com meio "Parcelado Hotmart". No banco cada venda é uma parcela; `installments` é o tamanho do plano |
 | Taxa no cartão | Taxa Hotmart ÷ faturamento por nº de parcelas (~9% em qualquer parcelamento) |
 | Extrato | As 200 vendas mais recentes do período (a tela informa o total) |
+
+## Performance (`/performance`)
+
+Vendas por origem de tráfego. **Só atribuição de vendas:** cliques, impressões e gasto com anúncios não estão no
+banco (ROAS e CPA exigiriam a API do Meta Ads). Faturamento e líquido seguem a convenção do dash (oferta, em reais).
+
+| Indicador | Conta |
+|---|---|
+| Com rastreio | Vendas cujo `tracking_source` (sck) informa uma origem. Sem sck, `null-null-…`, `undefined|…` ou só um código solto (`||||DCI04`) contam como "Sem rastreio" |
+| Canal | Origem do sck. `metaads`, `Facebook-Ads` e `Meta-ads` viram "Meta Ads"; `direct`, `HOTMART_*` têm nome próprio; as demais aparecem como vêm (`trafego`, `ig`, `instagram`, `grp-new`…) |
+| Campanha / anúncio / posicionamento | Campos do sck, na posição de cada template (`src/lib/sck.ts`). Só entram vendas rastreadas que informam o campo; a tela mostra quantas não informam |
+| Top 15 | Campanhas e anúncios mostram as 15 maiores por faturamento; o restante soma em "(outros)" |
+
+Limite conhecido: no formato `Facebook-Ads` de 4 partes, conjunto e campanha vêm colados no campo conjunto
+(o separador tem espaço e não divide). Nesses casos a campanha fica vazia e o texto aparece como conjunto.

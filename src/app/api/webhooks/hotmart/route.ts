@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { classifyProduct, cleanProductName } from "@/lib/product-classifier";
+import { parseSck } from "@/lib/sck";
 
 type HotmartCommission = {
   value?: number;
@@ -44,6 +45,11 @@ type HotmartWebhookPayload = {
       };
       tracking?: {
         source?: string;
+      };
+      // O sck (rastreio da venda) vem aqui no payload v2.
+      origin?: {
+        sck?: string;
+        src?: string;
       };
     };
     commissions?: HotmartCommission[];
@@ -218,6 +224,16 @@ export async function POST(req: NextRequest) {
       if (!isNaN(d.getTime())) approvedAt = d.toISOString();
     }
 
+    // Rastreio: sck guardado inteiro; os campos de UTM saem do parser único (src/lib/sck.ts)
+    const sck =
+      data.purchase.origin?.sck ||
+      data.origin?.sck ||
+      data.origin?.src ||
+      data.purchase.origin?.src ||
+      data.purchase.tracking?.source ||
+      null;
+    const parsedSck = parseSck(sck);
+
     // Classificação da família
     const classification = classifyProduct(rawProductName);
 
@@ -308,12 +324,10 @@ export async function POST(req: NextRequest) {
       taxa_hotmart_exata: decomposed ? r2(marketplace!.value!) : null,
       outras_comissoes: decomposed ? r2(outras) : null,
       fonte_taxa: decomposed ? "webhook" : null,
-      tracking_source: data.origin?.sck || data.origin?.src || data.purchase.tracking?.source || null,
-      utm_source: data.origin?.utm_source || null,
-      utm_medium: data.origin?.utm_medium || null,
-      utm_campaign: data.origin?.utm_campaign || null,
-      utm_content: data.origin?.utm_content || null,
-      utm_term: data.origin?.utm_term || null,
+      tracking_source: sck,
+      utm_source: parsedSck.origem,
+      utm_campaign: parsedSck.campanha,
+      utm_content: parsedSck.anuncio,
       raw_payload: body,
     }));
 

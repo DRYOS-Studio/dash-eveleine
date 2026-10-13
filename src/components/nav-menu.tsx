@@ -12,6 +12,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Vendas & Retenção", href: "/" },
   { label: "Financeiro", href: "/financeiro" },
+  { label: "Performance", href: "/performance" },
 ];
 
 export function NavMenu() {

@@ -322,13 +322,13 @@ export function resolveDateRange(
 const TX_COLUMNS = `
   transaction_code, product_id, product_name, customer_email, customer_name, status,
   approved_at, bruto, liquido, payment_type, installments, purchase_sequence, is_recompra,
-  moeda, preco_oferta, taxa_hotmart_exata, outras_comissoes`;
+  moeda, preco_oferta, taxa_hotmart_exata, outras_comissoes, tracking_source`;
 
 // Entram vendas em BRL e vendas em moeda estrangeira já convertidas para BRL (fonte_taxa = api_fx,
 // valor recebido em reais). Estrangeiras ainda sem conversão ficam de fora: valor nominal não é BRL.
 const ONLY_BRL = "moeda.is.null,moeda.eq.BRL,fonte_taxa.eq.api_fx";
 
-type TxRow = Record<string, any>;
+export type TxRow = Record<string, any>;
 
 /**
  * Valores da venda na convenção do dash:
@@ -336,7 +336,7 @@ type TxRow = Record<string, any>;
  *  - taxa_hotmart = comissão exata da Hotmart
  * Sem decomposição (preco_oferta nulo) cai no valor pago e conta em `semDecomposicao`.
  */
-function money(r: TxRow) {
+export function money(r: TxRow) {
   const decomposta = r.taxa_hotmart_exata != null && r.preco_oferta != null;
   return {
     bruto: Number(decomposta ? r.preco_oferta : r.bruto) || 0,
@@ -348,7 +348,7 @@ function money(r: TxRow) {
 }
 
 /** Carrega transações e metadados de produtos em paralelo com alta eficiência. */
-async function fetchTransactionsData(from: string | null, to: string) {
+export async function fetchTransactionsData(from: string | null, to: string) {
   let countQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })

@@ -41,3 +41,10 @@ Definições dos indicadores em `docs/indicadores.md`.
 ## Pendências
 
 Reembolsos, chargebacks e contestações ainda não aparecem no dash. Detalhes e passos em `docs/pendencias.md`.
+
+## Rastreio (sck / UTM)
+
+- O rastreio real está em `tracking_source` (sck da Hotmart); as colunas `utm_*` quase não têm dado histórico.
+- No webhook o sck vem em `data.purchase.origin.sck` (não em `data.origin`). `utm_source/campaign/content` do webhook saem de `parseSck`.
+- Leitura do sck só em `src/lib/sck.ts` (testes: `node --test src/lib/sck.test.ts`). Formato novo = ajustar o parser e o teste.
+- Em 2026-10-13 só ~29% das vendas têm origem identificável (setembro: 19%). A página `/performance` mostra a cobertura.
