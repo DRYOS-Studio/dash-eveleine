@@ -251,6 +251,24 @@ function median(values: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validDay(v: string | null | undefined): string | null {
+  if (!v || !DAY_RE.test(v)) return null;
+  const d = new Date(`${v}T00:00:00-03:00`);
+  return Number.isNaN(d.getTime()) ? null : v;
+}
+
+/** Valida os parâmetros de período da URL: range desconhecido vira "30"; datas fora de AAAA-MM-DD são descartadas. */
+export function sanitizePeriod(params: { range?: string | null; from?: string | null; to?: string | null }): {
+  range: RangeKey;
+  from: string | null;
+  to: string | null;
+} {
+  const range = (RANGE_KEYS as string[]).includes(params.range ?? "") ? (params.range as RangeKey) : "30";
+  return { range, from: validDay(params.from), to: validDay(params.to) };
+}
+
 /** Converte a chave ?range (ou datas de/até) em limites ISO-UTC ajustados para o horário de Brasília. */
 export function resolveDateRange(
   range: RangeKey = "30",

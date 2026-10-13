@@ -59,7 +59,12 @@ type HotmartWebhookPayload = {
   };
 };
 
+function must(label: string, result: { error: { message: string } | null }) {
+  if (result.error) throw new Error(`${label}: ${result.error.message}`);
+}
+
 export async function POST(req: NextRequest) {
+  let currentEventId: string | null = null;
   try {
     // 1. Validação de Segurança por Token HOTTOK
     const hottok = req.headers.get("x-hotmart-hottok");
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json()) as HotmartWebhookPayload;
     const eventId = body.id || `evt_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    currentEventId = eventId;
     const eventType = body.event || "UNKNOWN";
 
     // 2. Registro de Auditoria & Idempotência em webhook_events
@@ -87,9 +93,22 @@ export async function POST(req: NextRequest) {
       processed: false,
     });
 
-    if (eventError && eventError.code === "23505") {
-      // Evento duplicado já processado
-      return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+    if (eventError) {
+      if (eventError.code === "23505") {
+        // Reentrega: só ignora se o evento já foi processado. Se uma tentativa anterior falhou
+        // (422/500), `processed` continua false e a Hotmart precisa conseguir reprocessar.
+        const { data: prev } = await supabaseAdmin
+          .from("webhook_events")
+          .select("processed")
+          .eq("event_id", eventId)
+          .maybeSingle();
+        if (prev?.processed) {
+          return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+        }
+      } else {
+        // A trilha de auditoria não pode derrubar a venda: registra e segue.
+        console.error("[Hotmart Webhook] Falha ao gravar webhook_events:", eventError.message);
+      }
     }
 
     const data = body.data;
@@ -203,14 +222,14 @@ export async function POST(req: NextRequest) {
     const classification = classifyProduct(rawProductName);
 
     // Upsert do Produto
-    await supabaseAdmin.from("products").upsert({
+    must("products", await supabaseAdmin.from("products").upsert({
       id: rawProductId,
       name: rawProductName,
       family: classification.family,
       edition: classification.edition,
       category: classification.category,
       updated_at: new Date().toISOString(),
-    });
+    }));
 
     // Análise de Histórico do Cliente & Inteligência de Recompra
     const { data: customerData } = await supabaseAdmin
@@ -253,7 +272,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Primeiro registro do cliente
-      await supabaseAdmin.from("customers").insert({
+      must("customers", await supabaseAdmin.from("customers").insert({
         email: buyerEmail,
         name: buyerName,
         phone: buyerPhone,
@@ -263,11 +282,11 @@ export async function POST(req: NextRequest) {
         total_purchases: 0,
         total_spent_bruto: 0,
         total_spent_liquido: 0,
-      });
+      }));
     }
 
     // Inserção da Transação
-    await supabaseAdmin.from("transactions").upsert({
+    must("transactions", await supabaseAdmin.from("transactions").upsert({
       transaction_code: transactionCode,
       product_id: rawProductId,
       product_name: rawProductName,
@@ -296,7 +315,7 @@ export async function POST(req: NextRequest) {
       utm_content: data.origin?.utm_content || null,
       utm_term: data.origin?.utm_term || null,
       raw_payload: body,
-    });
+    }));
 
     // Acumulados do cliente recalculados a partir das transações (idempotente em reentregas)
     const { data: custTx } = await supabaseAdmin
@@ -308,7 +327,7 @@ export async function POST(req: NextRequest) {
     const totalBruto = (custTx ?? []).reduce((acc, t) => acc + (Number(t.bruto) || 0), 0);
     const totalLiquido = (custTx ?? []).reduce((acc, t) => acc + (Number(t.liquido) || 0), 0);
 
-    await supabaseAdmin
+    must("customers", await supabaseAdmin
       .from("customers")
       .update({
         ...(buyerName ? { name: buyerName } : {}),
@@ -318,7 +337,7 @@ export async function POST(req: NextRequest) {
         total_spent_liquido: Math.round(totalLiquido * 100) / 100,
         updated_at: new Date().toISOString(),
       })
-      .eq("email", buyerEmail);
+      .eq("email", buyerEmail));
 
     // Marca evento como concluído com sucesso
     await supabaseAdmin
@@ -334,6 +353,16 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     console.error("[Hotmart Webhook Error]:", err);
+    if (currentEventId) {
+      try {
+        await supabaseAdmin
+          .from("webhook_events")
+          .update({ error: err instanceof Error ? err.message : "Internal error" })
+          .eq("event_id", currentEventId);
+      } catch {
+        // melhor esforço
+      }
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal error" },
       { status: 500 },

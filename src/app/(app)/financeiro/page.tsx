@@ -1,6 +1,7 @@
 import {
   getFinancialData,
   RANGE_KEYS,
+  sanitizePeriod,
   type RangeKey,
 } from "@/lib/sales-data";
 import {
@@ -40,8 +41,7 @@ const dataBR = (iso: string) =>
 
 export default async function FinancialDashboardPage(props: PageProps) {
   const params = await props.searchParams;
-  const range = (params.range as RangeKey) || "30";
-  const { from, to } = params;
+  const { range, from, to } = sanitizePeriod(params);
 
   const data = await getFinancialData(range, from, to);
   const {

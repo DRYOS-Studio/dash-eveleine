@@ -16,4 +16,7 @@ next-env.d.ts
 .dev.vars
 .wrangler
 
-
+# relatórios gerados (contêm dados pessoais de compradores)
+/relatorio_*
+/*.xlsx
+/*.tsv

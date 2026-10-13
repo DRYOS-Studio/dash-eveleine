@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { getProductSalesDetail, resolveDateRange, type RangeKey } from "@/lib/sales-data";
+import { getProductSalesDetail, resolveDateRange, sanitizePeriod } from "@/lib/sales-data";
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthenticated())) {
@@ -13,11 +13,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Parâmetro 'family' é obrigatório" }, { status: 400 });
   }
 
-  const { from, to } = resolveDateRange(
-    (searchParams.get("range") as RangeKey) || "30",
-    searchParams.get("from"),
-    searchParams.get("to"),
-  );
+  const period = sanitizePeriod({
+    range: searchParams.get("range"),
+    from: searchParams.get("from"),
+    to: searchParams.get("to"),
+  });
+  const { from, to } = resolveDateRange(period.range, period.from, period.to);
 
   try {
     const { sales, total } = await getProductSalesDetail(family, from, to, 50);

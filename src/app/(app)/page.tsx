@@ -1,6 +1,7 @@
 import {
   getDashboardData,
   RANGE_KEYS,
+  sanitizePeriod,
   type RangeKey,
 } from "@/lib/sales-data";
 import {
@@ -37,8 +38,7 @@ type PageProps = {
 
 export default async function SalesDashboardPage(props: PageProps) {
   const params = await props.searchParams;
-  const range = (params.range as RangeKey) || "30";
-  const { from, to } = params;
+  const { range, from, to } = sanitizePeriod(params);
 
   const data = await getDashboardData(range, from, to);
   const { synthesis, cenarioUnica, cenarioRecompra, shareLiquidoRecompra } = data;
