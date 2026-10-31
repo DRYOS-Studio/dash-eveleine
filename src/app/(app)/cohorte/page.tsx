@@ -349,25 +349,31 @@ export default async function CohortePage() {
         <p className="py-6 text-center text-sm text-[var(--color-mute)]">Nenhuma venda aprovada no banco.</p>
       ) : (
         <>
-          <section className="flex flex-col gap-2.5">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+          <details className="group">
+            <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)] hover:text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
               01 / 08 · Linha do Tempo
-            </span>
-            <Card
-              title="Faturamento e líquido por mês"
-              sub="Mês pela data de aprovação, no horário de São Paulo. Meses sem venda aparecem zerados."
-              wide
-            >
-              <GraficoMensal meses={d.mensal} />
-            </Card>
-            <Card
-              title="Mês a mês"
-              sub="Clientes únicos contam cada e-mail uma vez dentro do mês; os meses não somam entre si."
-              wide
-            >
-              <TabelaMensal meses={d.mensal} />
-            </Card>
-          </section>
+              <span className="ml-2 text-[var(--color-oak-light)]">
+                <span className="group-open:hidden">▸ mostrar</span>
+                <span className="hidden group-open:inline">▾ ocultar</span>
+              </span>
+            </summary>
+            <div className="mt-2.5 flex flex-col gap-2.5">
+              <Card
+                title="Faturamento e líquido por mês"
+                sub="Mês pela data de aprovação, no horário de São Paulo. Meses sem venda aparecem zerados."
+                wide
+              >
+                <GraficoMensal meses={d.mensal} />
+              </Card>
+              <Card
+                title="Mês a mês"
+                sub="Clientes únicos contam cada e-mail uma vez dentro do mês; os meses não somam entre si."
+                wide
+              >
+                <TabelaMensal meses={d.mensal} />
+              </Card>
+            </div>
+          </details>
 
           <section className="flex flex-col gap-2.5">
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
