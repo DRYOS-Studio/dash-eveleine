@@ -55,7 +55,13 @@ em instante anterior. Parcelas, repetições do mesmo produto e compras simultâ
 
 ## Cohorte (`/cohorte`)
 
-Sempre todo o histórico (sem filtro de período): LTV e intervalo só fazem sentido com a vida inteira do cliente.
+Abre em "Todo o histórico" e tem o mesmo filtro de período das outras telas. O período filtra de dois jeitos:
+
+- **Por venda** (Linha do Tempo, concentração de famílias, família × edição): vendas aprovadas dentro do período.
+- **Por cliente** (LTV, intervalo, coortes, porta de entrada, jornadas, concentração de clientes): clientes cuja
+  **1ª compra** caiu no período, com a vida inteira deles até hoje (LTV e recompra olham compras depois do período também).
+  Por isso safras recentes têm "—" nas janelas de 60/90 dias.
+
 Mesmas vendas, mesmo faturamento (oferta) e mesmo líquido das outras telas; contas em `src/lib/cohorte-calc.ts`
 (testes: `node --test src/lib/cohorte-calc.test.ts`).
 
@@ -63,7 +69,7 @@ Mesmas vendas, mesmo faturamento (oferta) e mesmo líquido das outras telas; con
 |---|---|
 | Faturamento e líquido por mês | Soma por mês de `approved_at` (São Paulo). Meses sem venda entram zerados; o mês corrente aparece como parcial |
 | Clientes únicos do mês | E-mails distintos dentro do mês (não somam entre meses) |
-| LTV médio / mediano | Soma do faturamento de todas as vendas do cliente (e-mail), em todo o histórico; média e mediana entre clientes. Não usa `customers.total_spent_*`: aquilo soma o valor pago, com juros |
+| LTV médio / mediano | Soma do faturamento de todas as vendas do cliente (e-mail), da 1ª compra até hoje; média e mediana entre clientes. Não usa `customers.total_spent_*`: aquilo soma o valor pago, com juros |
 | LTV líquido médio | Idem com o líquido |
 | Sem recompra / Com recompra | Cliente sem / com ao menos uma venda `is_recompra`. "Com ÷ sem" = razão dos LTVs médios |
 | Clientes por produtos distintos | Nº de `product_id` distintos que o cliente comprou (1, 2, 3, 4, 5+). Repetir produto e parcelas não contam |

@@ -7,7 +7,7 @@ Dashboard de vendas da Hotmart. Quatro telas, só leitura, acesso por senha úni
 - **`/financeiro` — Financeiro:** caixa e retenção da plataforma, eficiência por meio de
   pagamento, módulo Parcelado Hotmart, curva de parcelamento no cartão e extrato de vendas.
 - **`/performance` — Performance:** vendas por origem de tráfego (canal, campanha, anúncio), lidas do sck.
-- **`/cohorte` — Cohorte:** faturamento mês a mês, LTV, intervalo até a 1ª recompra, coortes de aquisição, porta de entrada, jornadas, concentração e família × edição (todo o histórico).
+- **`/cohorte` — Cohorte:** faturamento mês a mês, LTV, intervalo até a 1ª recompra, coortes de aquisição, porta de entrada, jornadas, concentração e família × edição (com filtro de período).
 
 ## Stack
 

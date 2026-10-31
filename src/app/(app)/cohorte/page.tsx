@@ -1,9 +1,24 @@
 import { getCohorteData } from "@/lib/cohorte-data";
 import type { CoorteLinha, EntradaLinha, FaixaLinha, FamiliaEdicaoLinha, JornadaLinha, MesLinha, ParetoClientes, ParetoFamilia } from "@/lib/cohorte-calc";
-import { Card, Tile, cf, nf, pf } from "@/components/ui";
+import { RANGE_KEYS, sanitizePeriod, type RangeKey } from "@/lib/sales-data";
+import { Card, FiltroPeriodo, Tile, cf, nf, pf } from "@/components/ui";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
+
+const RANGE_LABEL: Record<RangeKey, string> = {
+  hoje: "Hoje",
+  ontem: "Ontem",
+  "7": "7 dias",
+  "30": "30 dias",
+  "90": "90 dias",
+  ano: "Este Ano",
+  all: "Todo o histórico",
+};
+
+type PageProps = {
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+};
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const rotuloMes = (m: string) => `${MESES[+m.slice(5, 7) - 1]}/${m.slice(2, 4)}`;
@@ -321,32 +336,57 @@ function TabelaFamiliaEdicao({ linhas }: { linhas: FamiliaEdicaoLinha[] }) {
   );
 }
 
-export default async function CohortePage() {
-  const d = await getCohorteData();
+export default async function CohortePage(props: PageProps) {
+  const sp = await props.searchParams;
+  // sem ?range, a Cohorte abre em todo o histórico (as outras telas abrem em 30 dias)
+  const { range, from, to } = sanitizePeriod({ ...sp, range: sp.range ?? "all" });
+  const activeKey = from || to ? "custom" : range;
+  const d = await getCohorteData(range, from, to);
+  const temClientes = d.clientes > 0;
+  const semVendas = <p className="py-6 text-center text-sm text-[var(--color-mute)]">Nenhuma venda neste período.</p>;
+  const semClientes = (
+    <p className="py-6 text-center text-sm text-[var(--color-mute)]">Nenhum cliente fez a 1ª compra neste período.</p>
+  );
   const { ltv, intervalo } = d;
   const razao = ltv.semRecompra.faturamentoMedio > 0 ? ltv.comRecompra.faturamentoMedio / ltv.semRecompra.faturamentoMedio : null;
 
   return (
     <div className="flex flex-col gap-8 max-w-[1320px] mx-auto">
-      <div className="border-b border-[var(--color-line)] pb-6">
-        <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-oak-light)] mb-1">
-          — Histórico e Retenção
-        </div>
-        <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-ink)]">
-          Cohorte
-        </h1>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <p className="text-sm text-[var(--color-mute)]">
-            Sempre todo o histórico: {nf(d.vendas)} vendas e {nf(d.clientes)} clientes (e-mail distinto).
-            Faturamento é o preço da oferta, sem juros de parcelamento.
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[var(--color-line)] pb-6">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-oak-light)] mb-1">
+            — Histórico e Retenção
+          </div>
+          <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-ink)]">
+            Cohorte
+          </h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-[var(--color-mute)]">
+              {nf(d.vendasNoPeriodo)} vendas aprovadas no período · {nf(d.clientes)} clientes com a 1ª compra no período.
+              Faturamento é o preço da oferta, sem juros de parcelamento.
+            </p>
+            <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
+            <AutoRefresh intervalMinutes={5} />
+          </div>
+          <p className="mt-1.5 max-w-[760px] text-xs text-[var(--color-mute)]">
+            Como o período filtra: Linha do Tempo, concentração de famílias e Família × Edição usam as vendas do período.
+            LTV, intervalo, coortes, porta de entrada, jornadas e concentração de clientes usam os clientes que fizeram a
+            1ª compra no período, com a vida inteira deles até hoje.
           </p>
-          <span className="hidden sm:inline text-xs text-[var(--color-line-strong)]">·</span>
-          <AutoRefresh intervalMinutes={5} />
         </div>
+
+        <FiltroPeriodo
+          action="/cohorte"
+          keys={RANGE_KEYS}
+          labels={RANGE_LABEL}
+          activeKey={activeKey}
+          fromDate={from}
+          toDate={to}
+        />
       </div>
 
-      {d.vendas === 0 ? (
-        <p className="py-6 text-center text-sm text-[var(--color-mute)]">Nenhuma venda aprovada no banco.</p>
+      {d.vendasNoPeriodo === 0 && !temClientes ? (
+        <p className="py-6 text-center text-sm text-[var(--color-mute)]">Nenhuma venda aprovada no período selecionado.</p>
       ) : (
         <>
           <details className="group">
@@ -363,18 +403,20 @@ export default async function CohortePage() {
                 sub="Mês pela data de aprovação, no horário de São Paulo. Meses sem venda aparecem zerados."
                 wide
               >
-                <GraficoMensal meses={d.mensal} />
+                {d.mensal.length > 0 ? <GraficoMensal meses={d.mensal} /> : semVendas}
               </Card>
               <Card
                 title="Mês a mês"
                 sub="Clientes únicos contam cada e-mail uma vez dentro do mês; os meses não somam entre si."
                 wide
               >
-                <TabelaMensal meses={d.mensal} />
+                {d.mensal.length > 0 ? <TabelaMensal meses={d.mensal} /> : semVendas}
               </Card>
             </div>
           </details>
 
+          {temClientes ? (
+            <>
           <section className="flex flex-col gap-2.5">
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
               02 / 08 · LTV
@@ -390,10 +432,10 @@ export default async function CohortePage() {
                 <span className="text-xs text-[var(--color-mute)]">O que fica por cliente</span>
               </Tile>
               <Tile label="Sem recompra" valor={cf(ltv.semRecompra.faturamentoMedio)}>
-                <span className="text-xs text-[var(--color-mute)]">{nf(ltv.semRecompra.clientes)} clientes</span>
+                <span className="text-xs text-[var(--color-mute)]">{nf(ltv.semRecompra.clientes)} {ltv.semRecompra.clientes === 1 ? "cliente" : "clientes"}</span>
               </Tile>
               <Tile label="Com recompra" valor={cf(ltv.comRecompra.faturamentoMedio)}>
-                <span className="text-xs text-[var(--color-mute)]">{nf(ltv.comRecompra.clientes)} clientes</span>
+                <span className="text-xs text-[var(--color-mute)]">{nf(ltv.comRecompra.clientes)} {ltv.comRecompra.clientes === 1 ? "cliente" : "clientes"}</span>
               </Tile>
               <Tile label="Com ÷ sem recompra" valor={razao != null ? `${razao.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}×` : "—"}>
                 <span className="text-xs text-[var(--color-mute)]">Razão dos LTVs médios</span>
@@ -493,6 +535,15 @@ export default async function CohortePage() {
               <TabelaJornadas linhas={d.jornadas.linhas} />
             </Card>
           </section>
+            </>
+          ) : (
+            <section className="flex flex-col gap-2.5">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
+                02–06 / 08 · LTV, Intervalo, Coortes, Entrada e Jornadas
+              </span>
+              {semClientes}
+            </section>
+          )}
 
           <section className="flex flex-col gap-2.5">
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute-soft)]">
@@ -500,10 +551,10 @@ export default async function CohortePage() {
             </span>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <Card title="Concentração de clientes" sub="Clientes ordenados pelo LTV; quanto do faturamento total vem do topo.">
-                <TabelaParetoClientes linhas={d.pareto.clientes} />
+                {temClientes ? <TabelaParetoClientes linhas={d.pareto.clientes} /> : semClientes}
               </Card>
               <Card title="Concentração de famílias" sub="As 10 maiores famílias por faturamento; o resto soma em “outras”.">
-                <TabelaParetoFamilias linhas={d.pareto.familias} />
+                {d.pareto.familias.length > 0 ? <TabelaParetoFamilias linhas={d.pareto.familias} /> : semVendas}
               </Card>
             </div>
           </section>
@@ -514,10 +565,10 @@ export default async function CohortePage() {
             </span>
             <Card
               title="Vendas por família e edição"
-              sub="Todo o histórico, ordenado por líquido. Edição vem do cadastro do produto (products.edition)."
+              sub="Vendas do período, ordenado por líquido. Edição vem do cadastro do produto (products.edition)."
               wide
             >
-              <TabelaFamiliaEdicao linhas={d.familiaEdicao} />
+              {d.familiaEdicao.length > 0 ? <TabelaFamiliaEdicao linhas={d.familiaEdicao} /> : semVendas}
             </Card>
           </section>
         </>

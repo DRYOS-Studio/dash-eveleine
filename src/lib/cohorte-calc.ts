@@ -76,6 +76,8 @@ export type FamiliaEdicaoLinha = {
 };
 
 export type CohorteCalc = {
+  /** vendas aprovadas dentro do período */
+  vendasNoPeriodo: number;
   mensal: MesLinha[];
   coortes: CoorteLinha[];
   /** `ambiguos` = clientes cuja 1ª compra teve mais de uma família no mesmo instante */
@@ -159,11 +161,26 @@ function grupoLtv(totais: Array<{ fat: number; liq: number }>): LtvGrupo {
   };
 }
 
-/** `hoje` = dia atual em São Paulo (AAAA-MM-DD); define qual mês é parcial. */
-export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCalc {
+/** Dias (AAAA-MM-DD, São Paulo, inclusivos) do período escolhido; null = sem limite. */
+export type Periodo = { de: string | null; ate: string | null };
+
+/**
+ * `hoje` = dia atual em São Paulo (AAAA-MM-DD).
+ * `periodo` filtra de dois jeitos (todas as vendas entram no cálculo; só o recorte muda):
+ *  - seções por venda (mensal, famílias, família × edição): vendas aprovadas dentro do período;
+ *  - seções por cliente (LTV, intervalo, coortes, entrada, jornadas, concentração de clientes):
+ *    clientes cuja 1ª compra caiu no período, com a vida inteira deles até hoje.
+ */
+export function calcularCohorte(vendas: VendaCohorte[], hoje: string, periodo: Periodo = { de: null, ate: null }): CohorteCalc {
+  const dentro = (iso: string) => {
+    const d = diaSP(iso);
+    return (!periodo.de || d >= periodo.de) && (!periodo.ate || d <= periodo.ate);
+  };
+  const vendasPeriodo = vendas.filter((v) => dentro(v.aprovadaEm));
+
   // ---- mensal
   const porMes = new Map<string, { vendas: number; clientes: Set<string>; fat: number; liq: number }>();
-  for (const v of vendas) {
+  for (const v of vendasPeriodo) {
     const mes = diaSP(v.aprovadaEm).slice(0, 7);
     const m = porMes.get(mes) || { vendas: 0, clientes: new Set<string>(), fat: 0, liq: 0 };
     m.vendas += 1;
@@ -184,7 +201,11 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
         clientes: x?.clientes.size ?? 0,
         faturamento: x?.fat ?? 0,
         liquido: x?.liq ?? 0,
-        parcial: m === hoje.slice(0, 7),
+        // mês corrente, ou mês cortado pelo início/fim do período escolhido
+        parcial:
+          m === hoje.slice(0, 7) ||
+          (periodo.de != null && m === periodo.de.slice(0, 7) && periodo.de.slice(8) !== "01") ||
+          (periodo.ate != null && m === periodo.ate.slice(0, 7) && periodo.ate < ultimoDiaDoMes(m)),
       });
     }
   }
@@ -211,6 +232,7 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
 
   for (const lista of porCliente.values()) {
     lista.sort((a, b) => a.aprovadaEm.localeCompare(b.aprovadaEm));
+    if (!dentro(lista[0].aprovadaEm)) continue; // seções por cliente: 1ª compra no período
     const tot = { fat: 0, liq: 0 };
     for (const v of lista) {
       tot.fat += v.faturamento;
@@ -278,7 +300,7 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
     nProdutos.set(n, f);
   }
 
-  const totalClientes = porCliente.size;
+  const totalClientes = todos.length;
   const produtosPorCliente: FaixaLinha[] = [1, 2, 3, 4, 5]
     .filter((n) => nProdutos.has(n))
     .map((n) => {
@@ -345,7 +367,7 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
   const porFamilia = new Map<string, number>();
   const porFamEd = new Map<string, { familia: string; edicao: string; vendas: number; fat: number; liq: number }>();
   let liqTotal = 0;
-  for (const v of vendas) {
+  for (const v of vendasPeriodo) {
     porFamilia.set(v.familia, (porFamilia.get(v.familia) || 0) + v.faturamento);
     const ed = v.edicao ?? "—";
     const k = `${v.familia}\u0000${ed}`;
@@ -356,16 +378,18 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
     porFamEd.set(k, x);
     liqTotal += v.liquido;
   }
+  // total das vendas do período (as famílias saem das vendas; o top de clientes, de clientes com 1ª compra no período)
+  const famFatTotal = [...porFamilia.values()].reduce((s, x) => s + x, 0);
   const famOrd = [...porFamilia.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const paretoFamilias: ParetoFamilia[] = [];
   let acum = 0;
   for (const [familia, fat] of famOrd.slice(0, TOP_FAMILIAS)) {
     acum += fat;
-    paretoFamilias.push({ familia, faturamento: fat, pct: fatTotal > 0 ? (fat / fatTotal) * 100 : 0, acumulado: fatTotal > 0 ? (acum / fatTotal) * 100 : 0 });
+    paretoFamilias.push({ familia, faturamento: fat, pct: famFatTotal > 0 ? (fat / famFatTotal) * 100 : 0, acumulado: famFatTotal > 0 ? (acum / famFatTotal) * 100 : 0 });
   }
   if (famOrd.length > TOP_FAMILIAS) {
-    const resto = fatTotal - acum;
-    paretoFamilias.push({ familia: `(outras ${famOrd.length - TOP_FAMILIAS} famílias)`, faturamento: resto, pct: fatTotal > 0 ? (resto / fatTotal) * 100 : 0, acumulado: fatTotal > 0 ? 100 : 0 });
+    const resto = famFatTotal - acum;
+    paretoFamilias.push({ familia: `(outras ${famOrd.length - TOP_FAMILIAS} famílias)`, faturamento: resto, pct: famFatTotal > 0 ? (resto / famFatTotal) * 100 : 0, acumulado: famFatTotal > 0 ? 100 : 0 });
   }
 
   const familiaEdicao: FamiliaEdicaoLinha[] = [...porFamEd.values()]
@@ -373,6 +397,7 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string): CohorteCa
     .sort((a, b) => b.liquido - a.liquido || a.familia.localeCompare(b.familia) || a.edicao.localeCompare(b.edicao));
 
   return {
+    vendasNoPeriodo: vendasPeriodo.length,
     mensal,
     coortes,
     entrada: { linhas: entradaLinhas, ambiguos: entradaAmbigua },

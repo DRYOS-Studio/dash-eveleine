@@ -161,3 +161,33 @@ test("família × edição: soma por par, ordenado por líquido", () => {
   near(f[0].liquido, 260);
   near(f.reduce((s, x) => s + x.shareLiquido, 0), 100);
 });
+
+test("período: seções por venda usam vendas do período; por cliente usam quem comprou 1ª vez no período, com a vida toda", () => {
+  // período = fev/2026 inteiro. Vendas em fev: só c (28/02, 30). Cliente com 1ª compra em fev: só c (inclui a recompra de 31/03).
+  const r = calcularCohorte(base, "2026-06-30", { de: "2026-02-01", ate: "2026-02-28" });
+  assert.equal(r.vendasNoPeriodo, 1);
+  assert.deepEqual(r.mensal.map((m) => [m.mes, m.vendas]), [["2026-02", 1]]);
+  assert.equal(r.ltv.todos.clientes, 1);
+  near(r.ltv.todos.faturamentoMedio, 100); // c: 30 + 70, mesmo com a 2ª venda fora do período
+  assert.equal(r.ltv.comRecompra.clientes, 1);
+  assert.equal(r.intervalo.mediana, 31);
+  assert.deepEqual(r.coortes.map((c) => [c.mes, c.novos]), [["2026-02", 1]]);
+  assert.deepEqual(r.entrada.linhas.map((l) => [l.familia, l.novos]), [["F1", 1]]);
+  assert.equal(r.jornadas.total, 1);
+  // famílias: só a venda de fev (F1 30); a recompra de mar (F3 70) fica fora
+  assert.deepEqual(r.pareto.familias.map((f) => [f.familia, f.faturamento]), [["F1", 30]]);
+  near(r.pareto.familias[0].pct, 100);
+  assert.deepEqual(r.familiaEdicao.map((f) => [f.familia, f.vendas]), [["F1", 1]]);
+  near(r.familiaEdicao[0].shareLiquido, 100);
+  assert.deepEqual(r.produtosPorCliente.map((f) => [f.rotulo, f.clientes, f.pct]), [["2", 1, 100]]);
+});
+
+test("período: mês cortado pelo início ou fim do período é parcial; período vazio não quebra", () => {
+  const r = calcularCohorte(base, "2026-06-30", { de: "2026-01-15", ate: "2026-03-10" });
+  assert.deepEqual(r.mensal.map((m) => [m.mes, m.parcial]), [["2026-01", true], ["2026-02", false], ["2026-03", true]]);
+  const v = calcularCohorte(base, "2026-06-30", { de: "2025-01-01", ate: "2025-01-31" });
+  assert.equal(v.vendasNoPeriodo, 0);
+  assert.equal(v.ltv.todos.clientes, 0);
+  assert.equal(v.mensal.length, 0);
+  assert.equal(v.pareto.clientes.length, 0);
+});
