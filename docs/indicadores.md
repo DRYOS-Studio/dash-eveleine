@@ -68,6 +68,11 @@ Mesmas vendas, mesmo faturamento (oferta) e mesmo líquido das outras telas; con
 | Sem recompra / Com recompra | Cliente sem / com ao menos uma venda `is_recompra`. "Com ÷ sem" = razão dos LTVs médios |
 | Clientes por produtos distintos | Nº de `product_id` distintos que o cliente comprou (1, 2, 3, 4, 5+). Repetir produto e parcelas não contam |
 | Intervalo de recompra | Um valor por cliente com recompra: dias corridos (São Paulo) da 1ª compra até a primeira venda de recompra. Mediana, média, percentis 25 e 75 (interpolação linear) e faixas |
+| Coortes de aquisição | Safra = mês (São Paulo) da 1ª compra do cliente. "Recompra em 60/90 dias" = % da safra cuja 1ª recompra veio em até 60/90 dias corridos da 1ª compra. Só aparece (senão "—") quando o último dia do mês da safra já tem 60/90 dias; "até hoje" não tem janela. LTV até hoje = faturamento médio por cliente da safra |
+| Porta de entrada | Agrupa por família da 1ª compra. Recompra até hoje = ao menos uma venda `is_recompra`. Recompra em 90 dias = só entre clientes com 90+ dias desde a 1ª compra (a tela mostra "de N"). Ticket de entrada = faturamento médio da 1ª compra. Cliente cuja 1ª compra teve mais de uma família no mesmo instante fica fora (a tela informa quantos) |
+| Jornadas | Família da 1ª compra → família da 1ª recompra, um caminho por cliente. Fora: cliente cuja 1ª compra ou 1ª recompra teve mais de uma família no mesmo instante (a tela informa quantos). Mesma família aparece quando a recompra é de outro produto dela (outra edição) |
+| Concentração | Clientes ordenados por LTV: % do faturamento total no top 1/5/10/20/50% (nº de clientes = teto de n × %). Famílias: 10 maiores por faturamento, % e % acumulado |
+| Família × edição | Vendas, faturamento, líquido e % do líquido por par família + `products.edition` |
 
 ## Performance (`/performance`)
 

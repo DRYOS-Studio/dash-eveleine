@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { calcularCohorte, diaSP, quantil, type VendaCohorte } from "./cohorte-calc.ts";
 
-const v = (email: string, prod: string, iso: string, fat: number, liq: number, rec = false): VendaCohorte => ({
-  email, productId: prod, aprovadaEm: iso, faturamento: fat, liquido: liq, isRecompra: rec,
+const v = (email: string, prod: string, iso: string, fat: number, liq: number, rec = false, edicao: string | null = "EVERGREEN"): VendaCohorte => ({
+  email, productId: prod, familia: `F${prod.slice(1)}`, edicao, aprovadaEm: iso, faturamento: fat, liquido: liq, isRecompra: rec,
 });
 
 test("dia em São Paulo: 02:30Z ainda é o dia anterior", () => {
@@ -74,4 +74,90 @@ test("sem vendas: tudo zerado, sem quebrar", () => {
   assert.equal(r.ltv.todos.clientes, 0);
   assert.equal(r.intervalo.clientes, 0);
   assert.equal(r.intervalo.mediana, 0);
+});
+
+const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+test("coortes: só mostra a janela de 60/90 dias quando a safra inteira já viveu esses dias", () => {
+  // jan: último dia 31/01. Em 20/03 passaram 48 dias → nenhuma janela completa
+  let c = calcularCohorte(base, "2026-03-20").coortes;
+  assert.deepEqual(c.map((x) => x.mes), ["2026-01", "2026-02"]);
+  assert.equal(c[0].novos, 2);
+  assert.equal(c[0].rec60, null);
+  assert.equal(c[0].rec90, null);
+  near(c[0].recAteHoje, 50);
+  near(c[0].ltvMedio, 175);
+  // 25/04: jan tem 84 dias (60 ok, 90 não); fev tem 56 (nenhuma)
+  c = calcularCohorte(base, "2026-04-25").coortes;
+  near(c[0].rec60 as number, 50);
+  assert.equal(c[0].rec90, null);
+  assert.equal(c[1].rec60, null);
+  // 30/06: tudo completo. c recomprou com 31 dias → conta em 60 e 90
+  c = calcularCohorte(base, "2026-06-30").coortes;
+  near(c[0].rec60 as number, 50);
+  near(c[0].rec90 as number, 50);
+  near(c[1].rec60 as number, 100);
+  near(c[1].rec90 as number, 100);
+});
+
+test("porta de entrada: família da 1ª compra, recompra até hoje e em 90 dias só entre quem tem 90+ dias", () => {
+  const e = calcularCohorte(base, "2026-06-30").entrada;
+  assert.equal(e.ambiguos, 0);
+  assert.equal(e.linhas.length, 1);
+  const l = e.linhas[0];
+  assert.equal(l.familia, "F1");
+  assert.equal(l.novos, 3);
+  near(l.pctRecompra, (2 / 3) * 100);
+  assert.equal(l.elegiveis90, 3);
+  near(l.pctRecompra90 as number, (2 / 3) * 100);
+  near(l.ltvMedio, 150);
+  near(l.ticketEntrada, (100 + 100 + 30) / 3);
+  // em 20/03 ninguém tem 90 dias: sem dado, não 0%
+  assert.equal(calcularCohorte(base, "2026-03-20").entrada.linhas[0].pctRecompra90, null);
+});
+
+test("porta de entrada: 1ª compra com duas famílias no mesmo instante fica fora e é contada", () => {
+  const r = calcularCohorte(
+    [v("d@x", "P1", "2026-01-10T15:00:00Z", 10, 8), v("d@x", "P2", "2026-01-10T15:00:00Z", 10, 8), ...base],
+    "2026-06-30",
+  );
+  assert.equal(r.entrada.ambiguos, 1);
+  assert.equal(r.entrada.linhas[0].novos, 3);
+});
+
+test("jornadas: 1ª família → família da 1ª recompra", () => {
+  const j = calcularCohorte(base, "2026-06-30").jornadas;
+  assert.equal(j.total, 2);
+  assert.equal(j.ambiguas, 0);
+  assert.deepEqual(j.linhas.map((x) => [x.de, x.para, x.clientes]), [["F1", "F2", 1], ["F1", "F3", 1]]);
+  near(j.linhas[0].pct, 50);
+});
+
+test("jornadas: 1ª recompra com duas famílias no mesmo instante é ambígua", () => {
+  const j = calcularCohorte(
+    [v("e@x", "P1", "2026-01-10T15:00:00Z", 10, 8), v("e@x", "P2", "2026-02-10T15:00:00Z", 10, 8, true), v("e@x", "P3", "2026-02-10T15:00:00Z", 10, 8, true)],
+    "2026-06-30",
+  ).jornadas;
+  assert.equal(j.total, 0);
+  assert.equal(j.ambiguas, 1);
+});
+
+test("pareto: top % dos clientes por LTV e famílias com acumulado", () => {
+  const p = calcularCohorte(base, "2026-06-30").pareto;
+  // LTVs 200, 150, 100 (total 450)
+  assert.deepEqual(p.clientes.map((x) => [x.topPct, x.clientes]), [[1, 1], [5, 1], [10, 1], [20, 1], [50, 2]]);
+  near(p.clientes[0].pctFaturamento, (200 / 450) * 100);
+  near(p.clientes[4].pctFaturamento, (350 / 450) * 100);
+  // F1 330, F3 70, F2 50
+  assert.deepEqual(p.familias.map((x) => x.familia), ["F1", "F3", "F2"]);
+  near(p.familias[0].pct, (330 / 450) * 100);
+  near(p.familias[1].acumulado, (400 / 450) * 100);
+  near(p.familias[2].acumulado, 100);
+});
+
+test("família × edição: soma por par, ordenado por líquido", () => {
+  const f = calcularCohorte([...base, v("z@x", "P1", "2026-02-01T15:00:00Z", 40, 30, false, "2026")], "2026-06-30").familiaEdicao;
+  assert.deepEqual(f.map((x) => [x.familia, x.edicao, x.vendas]), [["F1", "EVERGREEN", 4], ["F3", "EVERGREEN", 1], ["F2", "EVERGREEN", 1], ["F1", "2026", 1]]);
+  near(f[0].liquido, 260);
+  near(f.reduce((s, x) => s + x.shareLiquido, 0), 100);
 });
