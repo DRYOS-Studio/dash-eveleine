@@ -53,6 +53,22 @@ em instante anterior. Parcelas, repetições do mesmo produto e compras simultâ
 | Taxa no cartão | Taxa Hotmart ÷ faturamento por nº de parcelas (~9% em qualquer parcelamento) |
 | Extrato | As 200 vendas mais recentes do período (a tela informa o total) |
 
+## Cohorte (`/cohorte`)
+
+Sempre todo o histórico (sem filtro de período): LTV e intervalo só fazem sentido com a vida inteira do cliente.
+Mesmas vendas, mesmo faturamento (oferta) e mesmo líquido das outras telas; contas em `src/lib/cohorte-calc.ts`
+(testes: `node --test src/lib/cohorte-calc.test.ts`).
+
+| Indicador | Conta |
+|---|---|
+| Faturamento e líquido por mês | Soma por mês de `approved_at` (São Paulo). Meses sem venda entram zerados; o mês corrente aparece como parcial |
+| Clientes únicos do mês | E-mails distintos dentro do mês (não somam entre meses) |
+| LTV médio / mediano | Soma do faturamento de todas as vendas do cliente (e-mail), em todo o histórico; média e mediana entre clientes. Não usa `customers.total_spent_*`: aquilo soma o valor pago, com juros |
+| LTV líquido médio | Idem com o líquido |
+| Sem recompra / Com recompra | Cliente sem / com ao menos uma venda `is_recompra`. "Com ÷ sem" = razão dos LTVs médios |
+| Clientes por produtos distintos | Nº de `product_id` distintos que o cliente comprou (1, 2, 3, 4, 5+). Repetir produto e parcelas não contam |
+| Intervalo de recompra | Um valor por cliente com recompra: dias corridos (São Paulo) da 1ª compra até a primeira venda de recompra. Mediana, média, percentis 25 e 75 (interpolação linear) e faixas |
+
 ## Performance (`/performance`)
 
 Vendas por origem de tráfego. **Só atribuição de vendas:** cliques, impressões e gasto com anúncios não estão no

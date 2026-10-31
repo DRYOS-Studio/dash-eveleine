@@ -1,11 +1,13 @@
 # Partiu Empreender — Inteligência de Vendas (DRYOS)
 
-Dashboard de vendas da Hotmart. Duas telas, só leitura, acesso por senha única.
+Dashboard de vendas da Hotmart. Quatro telas, só leitura, acesso por senha única.
 
 - **`/` — Vendas & Retenção:** faturamento, ticket, clientes únicos, compra única vs recompra,
   mix por família de produto, últimas 20 vendas, meios de pagamento e parcelamento.
 - **`/financeiro` — Financeiro:** caixa e retenção da plataforma, eficiência por meio de
   pagamento, módulo Parcelado Hotmart, curva de parcelamento no cartão e extrato de vendas.
+- **`/performance` — Performance:** vendas por origem de tráfego (canal, campanha, anúncio), lidas do sck.
+- **`/cohorte` — Cohorte:** faturamento mês a mês, LTV por cliente e intervalo até a 1ª recompra (todo o histórico).
 
 ## Stack
 

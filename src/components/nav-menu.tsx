@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Vendas & Retenção", href: "/" },
   { label: "Financeiro", href: "/financeiro" },
   { label: "Performance", href: "/performance" },
+  { label: "Cohorte", href: "/cohorte" },
 ];
 
 export function NavMenu() {

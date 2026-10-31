@@ -38,6 +38,11 @@ Regra única (webhook, import e `scripts/recalc-customer-history.js`): 1ª compr
 tinha comprado OUTRO produto em instante anterior. Rodar o script (dry-run por padrão) após mexer na regra.
 Definições dos indicadores em `docs/indicadores.md`.
 
+## Cohorte
+
+- `/cohorte` é sempre todo o histórico. Contas em `src/lib/cohorte-calc.ts` (testes: `node --test src/lib/cohorte-calc.test.ts`).
+- LTV soma `preco_oferta`/líquido por e-mail; não usar `customers.total_spent_*` (valor pago, com juros).
+
 ## Pendências
 
 Reembolsos, chargebacks e contestações ainda não aparecem no dash. Detalhes e passos em `docs/pendencias.md`.
