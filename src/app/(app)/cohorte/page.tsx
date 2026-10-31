@@ -305,6 +305,9 @@ function TabelaParetoFamilias({ linhas }: { linhas: ParetoFamilia[] }) {
   );
 }
 
+// no banco o padrão é "EVERGREEN" (nome sem 2024/2025/2026); não significa que o produto fica à venda o ano todo
+const rotuloEdicao = (e: string) => (e === "EVERGREEN" ? "Sem ano" : e);
+
 function TabelaFamiliaEdicao({ linhas }: { linhas: FamiliaEdicaoLinha[] }) {
   return (
     <div className="overflow-x-auto">
@@ -323,7 +326,7 @@ function TabelaFamiliaEdicao({ linhas }: { linhas: FamiliaEdicaoLinha[] }) {
           {linhas.map((l) => (
             <tr key={`${l.familia}|${l.edicao}`} className={ROW}>
               <td className="py-2.5 px-3 font-medium text-[var(--color-ink)]">{l.familia}</td>
-              <td className="py-2.5 px-3 font-mono text-xs text-[var(--color-mute)]">{l.edicao}</td>
+              <td className="py-2.5 px-3 font-mono text-xs text-[var(--color-mute)]">{rotuloEdicao(l.edicao)}</td>
               <td className="py-2.5 pr-3 text-right font-mono text-xs">{nf(l.vendas)}</td>
               <td className="py-2.5 pr-3 text-right font-mono text-xs text-[var(--color-mute)] whitespace-nowrap">{cf(l.faturamento)}</td>
               <td className="py-2.5 pr-3 text-right font-mono text-xs font-semibold text-[var(--color-oak)] whitespace-nowrap">{cf(l.liquido)}</td>
@@ -565,7 +568,7 @@ export default async function CohortePage(props: PageProps) {
             </span>
             <Card
               title="Vendas por família e edição"
-              sub="Vendas do período, ordenado por líquido. Edição vem do cadastro do produto (products.edition)."
+              sub="Vendas do período, ordenado por líquido. Edição vem do cadastro do produto (products.edition); “Sem ano” = nome do produto sem 2024, 2025 ou 2026."
               wide
             >
               {d.familiaEdicao.length > 0 ? <TabelaFamiliaEdicao linhas={d.familiaEdicao} /> : semVendas}

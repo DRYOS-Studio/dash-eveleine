@@ -78,7 +78,7 @@ Mesmas vendas, mesmo faturamento (oferta) e mesmo líquido das outras telas; con
 | Porta de entrada | Agrupa por família da 1ª compra. Recompra até hoje = ao menos uma venda `is_recompra`. Recompra em 90 dias = só entre clientes com 90+ dias desde a 1ª compra (a tela mostra "de N"). Ticket de entrada = faturamento médio da 1ª compra. Cliente cuja 1ª compra teve mais de uma família no mesmo instante fica fora (a tela informa quantos) |
 | Jornadas | Família da 1ª compra → família da 1ª recompra, um caminho por cliente. Fora: cliente cuja 1ª compra ou 1ª recompra teve mais de uma família no mesmo instante (a tela informa quantos). Mesma família aparece quando a recompra é de outro produto dela (outra edição) |
 | Concentração | Clientes ordenados por LTV: % do faturamento total no top 1/5/10/20/50% (nº de clientes = teto de n × %). Famílias: 10 maiores por faturamento, % e % acumulado |
-| Família × edição | Vendas, faturamento, líquido e % do líquido por par família + `products.edition` |
+| Família × edição | Vendas, faturamento, líquido e % do líquido por par família + `products.edition`. O valor `EVERGREEN` do banco (nome do produto sem 2024/2025/2026) aparece como "Sem ano": não indica que o produto fica à venda o ano todo |
 
 ## Performance (`/performance`)
 
