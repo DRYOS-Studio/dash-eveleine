@@ -191,3 +191,29 @@ test("período: mês cortado pelo início ou fim do período é parcial; períod
   assert.equal(v.mensal.length, 0);
   assert.equal(v.pareto.clientes.length, 0);
 });
+
+test("jornadas: além das 15 maiores, as restantes ficam disponíveis e somam a linha (outras)", () => {
+  const vs: VendaCohorte[] = [];
+  for (let i = 1; i <= 16; i++) {
+    vs.push(v(`c${i}@x`, `P${i}`, "2026-01-10T15:00:00Z", 10, 8));
+    vs.push(v(`c${i}@x`, "P99", "2026-02-10T15:00:00Z", 10, 8, true));
+  }
+  const j = calcularCohorte(vs, "2026-06-30").jornadas;
+  assert.equal(j.total, 16);
+  assert.equal(j.linhas.length, 16); // 15 + (outras)
+  assert.equal(j.restantes.length, 1);
+  assert.equal(j.linhas[15].clientes, j.restantes.reduce((s, x) => s + x.clientes, 0));
+  assert.equal(j.restantes[0].para, "F99");
+});
+
+test("famílias: além das 10 maiores, as restantes trazem % e acumulado e fecham em 100%", () => {
+  const vs: VendaCohorte[] = [];
+  for (let i = 1; i <= 12; i++) vs.push(v(`c${i}@x`, `P${i}`, "2026-01-10T15:00:00Z", 100 - i, 80));
+  const p = calcularCohorte(vs, "2026-06-30").pareto;
+  assert.equal(p.familias.length, 11); // 10 + (outras)
+  assert.equal(p.familiasRestantes.length, 2);
+  const outras = p.familias[10];
+  near(outras.faturamento, p.familiasRestantes.reduce((s, f) => s + f.faturamento, 0));
+  near(p.familiasRestantes[1].acumulado, 100);
+  assert.ok(p.familiasRestantes[0].acumulado > p.familias[9].acumulado);
+});

@@ -84,11 +84,18 @@ export type CohorteCalc = {
   entrada: { linhas: EntradaLinha[]; ambiguos: number };
   jornadas: {
     linhas: JornadaLinha[];
+    /** jornadas além das 15 maiores (a última linha de `linhas` as soma) */
+    restantes: JornadaLinha[];
     /** clientes com jornada definida (1ª compra e 1ª recompra com uma única família cada) */
     total: number;
     ambiguas: number;
   };
-  pareto: { clientes: ParetoClientes[]; familias: ParetoFamilia[] };
+  pareto: {
+    clientes: ParetoClientes[];
+    familias: ParetoFamilia[];
+    /** famílias além das 10 maiores (a última linha de `familias` as soma) */
+    familiasRestantes: ParetoFamilia[];
+  };
   familiaEdicao: FamiliaEdicaoLinha[];
   ltv: { todos: LtvGrupo; semRecompra: LtvGrupo; comRecompra: LtvGrupo };
   /** Clientes por nº de produtos distintos comprados (1, 2, 3, 4, 5+). */
@@ -349,6 +356,7 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string, periodo: P
   const jornadasOrd = [...jornada.values()].sort((a, b) => b.clientes - a.clientes || a.de.localeCompare(b.de) || a.para.localeCompare(b.para));
   const pctJ = (n: number) => (jornadasTotal > 0 ? (n / jornadasTotal) * 100 : 0);
   const jornadasLinhas: JornadaLinha[] = jornadasOrd.slice(0, TOP_JORNADAS).map((j) => ({ ...j, pct: pctJ(j.clientes) }));
+  const jornadasRestantes: JornadaLinha[] = jornadasOrd.slice(TOP_JORNADAS).map((j) => ({ ...j, pct: pctJ(j.clientes) }));
   if (jornadasOrd.length > TOP_JORNADAS) {
     const resto = jornadasOrd.slice(TOP_JORNADAS).reduce((s, j) => s + j.clientes, 0);
     jornadasLinhas.push({ de: `(outras ${jornadasOrd.length - TOP_JORNADAS} jornadas)`, para: "", clientes: resto, pct: pctJ(resto) });
@@ -387,6 +395,12 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string, periodo: P
     acum += fat;
     paretoFamilias.push({ familia, faturamento: fat, pct: famFatTotal > 0 ? (fat / famFatTotal) * 100 : 0, acumulado: famFatTotal > 0 ? (acum / famFatTotal) * 100 : 0 });
   }
+  const familiasRestantes: ParetoFamilia[] = [];
+  let acumResto = acum;
+  for (const [familia, fat] of famOrd.slice(TOP_FAMILIAS)) {
+    acumResto += fat;
+    familiasRestantes.push({ familia, faturamento: fat, pct: famFatTotal > 0 ? (fat / famFatTotal) * 100 : 0, acumulado: famFatTotal > 0 ? (acumResto / famFatTotal) * 100 : 0 });
+  }
   if (famOrd.length > TOP_FAMILIAS) {
     const resto = famFatTotal - acum;
     paretoFamilias.push({ familia: `(outras ${famOrd.length - TOP_FAMILIAS} famílias)`, faturamento: resto, pct: famFatTotal > 0 ? (resto / famFatTotal) * 100 : 0, acumulado: famFatTotal > 0 ? 100 : 0 });
@@ -401,8 +415,8 @@ export function calcularCohorte(vendas: VendaCohorte[], hoje: string, periodo: P
     mensal,
     coortes,
     entrada: { linhas: entradaLinhas, ambiguos: entradaAmbigua },
-    jornadas: { linhas: jornadasLinhas, total: jornadasTotal, ambiguas: jornadasAmbiguas },
-    pareto: { clientes: paretoClientes, familias: paretoFamilias },
+    jornadas: { linhas: jornadasLinhas, restantes: jornadasRestantes, total: jornadasTotal, ambiguas: jornadasAmbiguas },
+    pareto: { clientes: paretoClientes, familias: paretoFamilias, familiasRestantes },
     familiaEdicao,
     ltv: { todos: grupoLtv(todos), semRecompra: grupoLtv(sem), comRecompra: grupoLtv(com) },
     produtosPorCliente,

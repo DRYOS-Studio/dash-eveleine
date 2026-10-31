@@ -308,6 +308,21 @@ function TabelaParetoFamilias({ linhas }: { linhas: ParetoFamilia[] }) {
 // no banco o padrão é "EVERGREEN" (nome sem 2024/2025/2026); não significa que o produto fica à venda o ano todo
 const rotuloEdicao = (e: string) => (e === "EVERGREEN" ? "Sem ano" : e);
 
+/** Clique para mostrar as linhas que a tabela principal resumiu em "(outras N …)". Sem JS: <details>. */
+function VerMais({ n, singular, plural, children }: { n: number; singular: string; plural: string; children: React.ReactNode }) {
+  if (n === 0) return null;
+  const rotulo = `${nf(n)} ${n === 1 ? singular : plural}`;
+  return (
+    <details className="group mt-4">
+      <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-wider text-[var(--color-oak-light)] hover:text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+        <span className="group-open:hidden">▸ Mostrar {rotulo}</span>
+        <span className="hidden group-open:inline">▾ Ocultar {rotulo}</span>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 function TabelaFamiliaEdicao({ linhas }: { linhas: FamiliaEdicaoLinha[] }) {
   return (
     <div className="overflow-x-auto">
@@ -532,10 +547,13 @@ export default async function CohortePage(props: PageProps) {
               title="Da 1ª compra para a 1ª recompra"
               sub={`Família da 1ª compra → família da 1ª recompra, um caminho por cliente (${nf(d.jornadas.total)} clientes). Mesma família aparece quando a recompra é de outro produto dela (outra edição, por exemplo).${
                 d.jornadas.ambiguas > 0 ? ` ${nf(d.jornadas.ambiguas)} clientes com recompra ficam fora: a 1ª compra ou a 1ª recompra teve mais de uma família no mesmo instante.` : ""
-              } Mostra as 15 maiores.`}
+              } Mostra as 15 maiores; clique para ver o resto.`}
               wide
             >
               <TabelaJornadas linhas={d.jornadas.linhas} />
+              <VerMais n={d.jornadas.restantes.length} singular="jornada restante" plural="jornadas restantes">
+                <TabelaJornadas linhas={d.jornadas.restantes} />
+              </VerMais>
             </Card>
           </section>
             </>
@@ -556,8 +574,17 @@ export default async function CohortePage(props: PageProps) {
               <Card title="Concentração de clientes" sub="Clientes ordenados pelo LTV; quanto do faturamento total vem do topo.">
                 {temClientes ? <TabelaParetoClientes linhas={d.pareto.clientes} /> : semClientes}
               </Card>
-              <Card title="Concentração de famílias" sub="As 10 maiores famílias por faturamento; o resto soma em “outras”.">
-                {d.pareto.familias.length > 0 ? <TabelaParetoFamilias linhas={d.pareto.familias} /> : semVendas}
+              <Card title="Concentração de famílias" sub="As 10 maiores famílias por faturamento; o resto soma em “outras”, e um clique mostra cada uma.">
+                {d.pareto.familias.length > 0 ? (
+                  <>
+                    <TabelaParetoFamilias linhas={d.pareto.familias} />
+                    <VerMais n={d.pareto.familiasRestantes.length} singular="família restante" plural="famílias restantes">
+                      <TabelaParetoFamilias linhas={d.pareto.familiasRestantes} />
+                    </VerMais>
+                  </>
+                ) : (
+                  semVendas
+                )}
               </Card>
             </div>
           </section>
