@@ -9,12 +9,13 @@ import "server-only";
 //   GET /scheduled_events        → status, start_time, end_time, name (= nome da
 //                                  agenda), event_type, event_memberships (host),
 //                                  cancellation. Paginado, `count` máx 100.
-//   GET /scheduled_events/{u}/invitees → no_show, name, email, tracking (utm).
+//   GET /scheduled_events/{u}/invitees → name, email, tracking (utm), no_show.
 //
-// ⚠️ `no_show` vive no Invitee, NÃO no Event, e não existe listagem org-wide de
-// invitees (`/invitees` é POST-only, da Scheduling API). Logo saber quem faltou
-// custa UM REQUEST POR EVENTO. É essa assimetria que justifica o desenho em duas
-// camadas do painel: o que é barato renderiza na hora, o no-show entra depois.
+// ⚠️ Não existe listagem org-wide de invitees (`/invitees` é POST-only, da
+// Scheduling API). Logo o nome do convidado custa UM REQUEST POR EVENTO. É essa
+// assimetria que justifica o desenho em duas camadas do painel: o que é barato
+// renderiza na hora, a presença entra depois. O no-show NÃO sai daqui: vem da
+// `lead_no_shows` (ver `reunioesEmFalta` em agenda.ts); `no_show` do invitee é ignorado.
 
 const API = "https://api.calendly.com";
 
@@ -28,8 +29,8 @@ const TENTATIVAS = 3;
  * recarregar o mês só re-busca os dias quentes.
  */
 const TTL_FUTURO = 300; // 5 min — ainda pode ser cancelado/remarcado
-const TTL_RECENTE = 3600; // 1 h — o operador ainda vai marcar falta
-const TTL_ANTIGO = 86400; // 24 h — no-show já estabilizou
+const TTL_RECENTE = 3600; // 1 h — evento recente ainda pode mudar
+const TTL_ANTIGO = 86400; // 24 h — evento antigo não muda mais
 const DIAS_RECENTE = 7;
 
 function token(): string {
@@ -218,7 +219,7 @@ function ttlDoEvento(endTime: string, agora: number): number {
 }
 
 /**
- * Invitees de um evento. É daqui que sai o no-show — e é o request caro.
+ * Invitees de um evento. É daqui que sai o nome do convidado — e é o request caro.
  * Um evento 1:1 tem um invitee; a paginação existe para eventos coletivos.
  */
 export async function listarInvitees(
