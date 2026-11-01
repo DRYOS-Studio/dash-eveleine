@@ -6,8 +6,8 @@ Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-alt
 - **`/` — Captação:** funil de inscrição (quantos iniciaram, terminaram, agendaram call),
   com quebra por formulário, geografia e UTM. Fonte: Supabase.
 - **`/agenda` — Agenda:** o que acontece *depois* do agendamento — reuniões do dia,
-  qualificação por score (Score 10 e Score 3), no-show, cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly, enriquecida
-  pelo Supabase.
+  qualificação por score (Score 10 e Score 3), no-show (também por score), cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly,
+  enriquecida pelo Supabase (inclusive a `lead_no_shows`, que marca as faltas).
 
 A definição de cada indicador — numerador, denominador e o que fica de fora — está no
 [manual do produto](docs/manual-do-produto.md), escrito para quem lê a dash.
@@ -75,16 +75,18 @@ Exige um **Personal Access Token de admin/owner da organização** — sem esse 
 | Dado | Endpoint | Custo |
 |---|---|---|
 | status, início/fim, nome da agenda, anfitrião, cancelamento (e por quem) | `GET /scheduled_events` | **barato** — 100 por request, ~6 requests pro mês |
-| **no-show**, nome do convidado | `GET /scheduled_events/{uuid}/invitees` | **1 request POR evento** |
+| nome do convidado | `GET /scheduled_events/{uuid}/invitees` | **1 request POR evento** |
 
-`no_show` vive no *Invitee*, não no *Event*, e **não existe listagem org-wide de invitees**
-(`/invitees` é POST-only, da Scheduling API). Por isso a página renderiza em duas camadas: o
-barato sai na hora, e o bloco de presença entra depois via `<Suspense>`.
+O **no-show não vem do Calendly**: vem da tabela `lead_no_shows` (deals `No-show` do CRM),
+ligada à reunião por e-mail/telefone — ver `reunioesEmFalta` em `src/lib/agenda.ts`. Os
+invitees só servem para o nome na lista nominal, e **não existe listagem org-wide de
+invitees** (`/invitees` é POST-only, da Scheduling API). Por isso a página renderiza em duas
+camadas: o barato sai na hora, e o bloco de presença entra depois via `<Suspense>`.
 
 O que torna a visão do mês viável sem banco próprio é o **Data Cache**: cada evento é uma
-entrada independente, com TTL pela idade — 24 h se terminou há mais de 7 dias (no-show já
-estabilizou), 1 h se é recente, 5 min se é futuro. O mês custa caro **uma vez**; nas
-recargas só os dias quentes voltam à API.
+entrada independente, com TTL pela idade — 24 h se terminou há mais de 7 dias, 1 h se é
+recente, 5 min se é futuro. O mês custa caro **uma vez**; nas recargas só os dias quentes
+voltam à API.
 
 O limite de requisições da Calendly não está declarado no OpenAPI e não foi possível
 confirmá-lo na documentação pública — o cliente usa teto de concorrência 5, respeita
@@ -97,8 +99,10 @@ confirmá-lo na documentação pública — o cliente usa teto de concorrência 
   formulário/UTM — cai em `(fora do funil)`, junto de quem marcou direto pelo link.
 - **A página mostra nomes.** A Captação só mostra agregados; a lista de reuniões é nominal.
   Sem e-mail e sem telefone, e atrás da mesma senha.
-- **O no-show depende de o time marcar falta no Calendly.** Se ninguém marca, a métrica é
-  zero legítimo — e indistinguível de zero por bug.
+- **O no-show depende da `lead_no_shows`**, que só tem deals de 22/10/2026 em diante (janelas
+  que cruzam essa data têm taxa subestimada) e é ligada à reunião por e-mail/telefone, de forma
+  aproximada. Tem RLS sem policy para anon: **exige `SUPABASE_SERVICE_ROLE_KEY` de verdade** —
+  com chave `anon` a leitura volta vazia, sem erro, e presença aparece como "—".
 
 ## Rodar local
 

@@ -1,7 +1,11 @@
 import "server-only";
 import { cache } from "react";
 import {
+  FONE_MIN,
   getLeadsByCalendlyEvent,
+  getNoShowDeals,
+  type LeadOrigem,
+  type NoShowDeal,
   spDate,
   spMidnight,
   spToday,
@@ -36,6 +40,7 @@ const TOP = 10; // linhas por quebra; o resto vira "(outros)"
 // Calendly já contam com o Data Cache; isto resolve o lado do Supabase, que
 // não passa por `fetch` e portanto não é cacheado pelo Next.)
 const origens = cache(getLeadsByCalendlyEvent);
+const noShowDeals = cache(getNoShowDeals);
 
 /**
  * Modo de demonstração: dados falsos para olhar a tela antes de existir
@@ -318,6 +323,8 @@ export type Reuniao = {
 
 export type LinhaPresenca = { label: string; concluidas: number; faltas: number };
 
+export type ContagemScore = { concluidas: number; faltas: number };
+
 export type Presenca = {
   /** Reuniões ativas que já terminaram. Denominador da taxa de falta. */
   concluidas: number;
@@ -325,20 +332,67 @@ export type Presenca = {
   faltaram: number;
   byAgenda: LinhaPresenca[];
   byHost: LinhaPresenca[];
+  /** Mesmo critério de `concluidas`/`faltas`, só das reuniões de lead com Score 10 ou 3. */
+  porScore: { s10: ContagemScore; s3: ContagemScore };
   reunioes: Reuniao[];
   /** Quantos eventos a API não respondeu — a taxa é sobre o que deu pra ler. */
   falhas: number;
   /**
-   * `no_show` no Calendly só é preenchido quando alguém marca a falta à mão.
-   * Zero marcações na janela não distingue "ninguém faltou" de "ninguém marca"
-   * — e exibir 0 faltas afirmaria uma presença que não foi medida. Quando isto
-   * é falso, presença vira "—" em vez de zero.
+   * A falta vem da `lead_no_shows` (deals 'No-show' do CRM), cruzada por
+   * e-mail/telefone. Zero faltas casadas na janela não distingue "ninguém
+   * faltou" de "a tabela não cobre este período" (ela só tem deals de
+   * 22/10/2026 em diante) — e exibir 0 afirmaria uma presença que não foi
+   * medida. Quando isto é falso, presença vira "—" em vez de zero.
    */
   rastreado: boolean;
 };
 
-const faltou = (invitees: CalendlyInvitee[]) =>
-  invitees.some((i) => i.no_show !== null && i.status !== "canceled");
+/**
+ * Uuids das reuniões marcadas como falta. A `lead_no_shows` não diz QUAL reunião
+ * foi a falta, então cada deal vira UMA reunião: a última, já concluída e não
+ * cancelada, de um lead com o mesmo e-mail ou telefone (decisão do Rafael,
+ * 2026-11-01). Só enxerga os eventos da janela — um lead cuja falta real foi
+ * antes dela e que compareceu a outra dentro dela é marcado nesta.
+ * Dois deals da mesma pessoa caem na mesma reunião e contam uma vez.
+ */
+function reunioesEmFalta(
+  eventos: CalendlyEvent[],
+  porUuid: Map<string, LeadOrigem>,
+  deals: NoShowDeal[],
+  agora: number,
+): Set<string> {
+  const fim = new Map<string, number>(); // uuid → end_time
+  const porEmail = new Map<string, string>(); // chave → uuid da reunião mais recente
+  const porFone = new Map<string, string>();
+
+  const guardar = (m: Map<string, string>, chave: string, uuid: string) => {
+    if (!chave) return;
+    const atual = m.get(chave);
+    if (atual === undefined || fim.get(uuid)! > fim.get(atual)!) m.set(chave, uuid);
+  };
+
+  for (const e of eventos) {
+    const end = Date.parse(e.end_time);
+    if (e.status === "canceled" || end > agora) continue;
+    const uuid = uuidDe(e.uri);
+    const lead = porUuid.get(uuid);
+    if (!lead) continue;
+    fim.set(uuid, end);
+    guardar(porEmail, lead.email, uuid);
+    guardar(porFone, lead.fone.length >= FONE_MIN ? lead.fone : "", uuid);
+  }
+
+  const emFalta = new Set<string>();
+  for (const d of deals) {
+    const achados = [
+      porEmail.get(d.email),
+      d.fone.length >= FONE_MIN ? porFone.get(d.fone) : undefined,
+    ].filter((u): u is string => u !== undefined);
+    if (achados.length === 0) continue;
+    emFalta.add(achados.reduce((a, b) => (fim.get(b)! > fim.get(a)! ? b : a)));
+  }
+  return emFalta;
+}
 
 const nomeDe = (invitees: CalendlyInvitee[]) =>
   invitees.map((i) => i.name).filter(Boolean).join(", ") || "(sem nome)";
@@ -357,19 +411,21 @@ const somaPresenca = (
 
 /**
  * Busca os invitees de cada evento da janela. É o request caro — um por
- * evento — e é a única forma de saber no-show: a API não expõe listagem
- * org-wide de invitees.
+ * evento — e hoje serve só para o nome na lista nominal (`nomeDe`): a falta
+ * vem da `lead_no_shows`, não do invitee.
  */
 async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
   const agora = Date.now();
 
   // memoizados: a camada 1 já resolveu os dois neste mesmo request
-  const [eventos, porUuid] = await Promise.all([
+  const [eventos, porUuid, deals] = await Promise.all([
     eventosDa(period.from, period.to),
     origens(),
+    noShowDeals(),
   ]);
 
   const porEvento = await inviteesDe(eventos, agora);
+  const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
 
   const mapAgenda = new Map<string, LinhaPresenca>();
   const mapHost = new Map<string, LinhaPresenca>();
@@ -379,6 +435,10 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
   let faltaram = 0;
   let concluidas = 0;
   let falhas = 0;
+  const porScore = {
+    s10: { concluidas: 0, faltas: 0 },
+    s3: { concluidas: 0, faltas: 0 },
+  };
 
   for (const e of eventos) {
     const uuid = uuidDe(e.uri);
@@ -387,12 +447,19 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
 
     const ativa = e.status !== "canceled";
     const concluida = ativa && Date.parse(e.end_time) <= agora;
-    const falta = concluida && !!invitees && faltou(invitees);
+    const falta = emFalta.has(uuid); // só contém reuniões concluídas e ativas
+    const score = porUuid.get(uuid)?.score ?? null;
 
     if (concluida) {
       concluidas++;
       if (falta) faltaram++;
       else compareceram++;
+
+      const faixa = score === 10 ? porScore.s10 : score === 3 ? porScore.s3 : null;
+      if (faixa) {
+        faixa.concluidas++;
+        if (falta) faixa.faltas++;
+      }
     }
 
     const agenda = agendaDe(e);
@@ -408,7 +475,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
       host,
       situacao: situacaoDe(e, agora, falta),
       origem: porUuid.get(uuid)?.form ?? SEM_LEAD,
-      score: porUuid.get(uuid)?.score ?? null,
+      score,
       canceladaPor: e.cancellation?.canceler_type,
       motivo: e.cancellation?.reason,
     });
@@ -425,6 +492,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
     faltaram,
     byAgenda: ordenar(mapAgenda),
     byHost: ordenar(mapHost),
+    porScore,
     reunioes: reunioes.sort((a, b) => a.inicio.localeCompare(b.inicio)),
     falhas,
     rastreado: faltaram > 0,

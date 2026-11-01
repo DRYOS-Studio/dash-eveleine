@@ -249,7 +249,7 @@ function EsqueletoPresenca() {
   return (
     <Card
       title="Presença"
-      sub="Consultando o Calendly evento a evento — o no-show só existe no invitee, não na listagem."
+      sub="Consultando o Calendly evento a evento (nome do convidado) e cruzando com os no-shows do CRM."
     >
       <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
         <span
@@ -349,13 +349,38 @@ async function BlocoPresenca({ period }: { period: AgendaPeriod }) {
         />
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Tile
+          label="No-show · Score 10"
+          valor={p.rastreado ? nf(p.porScore.s10.faltas) : "—"}
+        >
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {p.rastreado && p.porScore.s10.concluidas
+              ? pf(taxa(p.porScore.s10.faltas, p.porScore.s10.concluidas))
+              : "—"}{" "}
+            das {nf(p.porScore.s10.concluidas)} concluídas · alta renda
+          </span>
+        </Tile>
+        <Tile
+          label="No-show · Score 3"
+          valor={p.rastreado ? nf(p.porScore.s3.faltas) : "—"}
+        >
+          <span className="text-xs text-[var(--color-muted-2)]">
+            {p.rastreado && p.porScore.s3.concluidas
+              ? pf(taxa(p.porScore.s3.faltas, p.porScore.s3.concluidas))
+              : "—"}{" "}
+            das {nf(p.porScore.s3.concluidas)} concluídas · renda média
+          </span>
+        </Tile>
+      </div>
+
       {p.concluidas > 0 && !p.rastreado && (
         <p className="rounded-lg border p-3 text-[13px] text-[var(--color-muted)]">
           <strong className="font-semibold text-[var(--color-fg)]">Presença não rastreada.</strong>{" "}
-          Nenhuma das {nf(p.concluidas)} reuniões concluídas tem no-show marcado no Calendly — e o
-          campo só é preenchido quando o anfitrião marca a falta à mão. Por isso presença aparece
-          como &ldquo;—&rdquo; e não como zero: não dá para distinguir &ldquo;ninguém faltou&rdquo;
-          de &ldquo;ninguém marca&rdquo;.
+          Nenhum deal &ldquo;No-show&rdquo; da <code>lead_no_shows</code> casa com as{" "}
+          {nf(p.concluidas)} reuniões concluídas deste período — e a tabela só tem deals de
+          22/10/2026 em diante. Por isso presença aparece como &ldquo;—&rdquo; e não como zero: não
+          dá para distinguir &ldquo;ninguém faltou&rdquo; de &ldquo;período sem cobertura&rdquo;.
         </p>
       )}
 
