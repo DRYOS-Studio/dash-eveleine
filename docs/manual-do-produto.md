@@ -107,35 +107,41 @@ aconteceram*, não o total de marcadas.
 | Indicador | O que conta |
 | --- | --- |
 | Já aconteceram | Reuniões não canceladas cujo horário de término já passou |
-| Compareceram | Dessas, aquelas sem falta registrada |
-| No-show | Dessas, aquelas com falta registrada |
+| Compareceram | Dessas, aquelas que não constam como falta |
+| No-show | Dessas, aquelas marcadas como falta (ver *De onde vem a falta*) |
 | Taxa de no-show | No-show ÷ Já aconteceram |
+| No-show · Score 10 / Score 3 | Mesma conta, só das reuniões de leads com Score 10 (ou 3). Taxa = faltas ÷ já aconteceram **do mesmo score** |
 
 Uma reunião **cancelada nunca entra** nesta faixa. Cancelar antes não é faltar, e misturar
 as duas coisas inflaria a taxa de falta com gente que avisou.
 
+### De onde vem a falta
+
+A falta vem da tabela **`lead_no_shows`** do Supabase (deals do CRM), **não** do Calendly. Conta
+só `deal_stage = 'No-show'`; `Follow-Up` fica de fora. O campo `no_show` do Calendly deixou de
+ser lido: ele só existe se o anfitrião marcar à mão, e numa verificação de 2026-09-18 veio nulo
+em **30 de 30** reuniões concluídas.
+
+A tabela não diz **qual** reunião foi a falta. Cada deal é ligado ao lead por **e-mail ou
+telefone** (telefone com ≥ 10 dígitos) e vira **uma** reunião: a última já concluída e não
+cancelada daquele lead, dentro da janela da tela. Dois deals da mesma pessoa contam uma vez.
+
 ### Por que aparece um travessão no lugar do número
 
-Quando os três indicadores de presença mostram `—` e a tela traz o aviso *"Presença não
-rastreada"*, o motivo é este:
+Quando os indicadores de presença mostram `—` e a tela traz o aviso *"Presença não
+rastreada"*, nenhum deal "No-show" casa com as reuniões concluídas da janela. A tabela só tem
+deals de **22/10/2026 em diante**, então janelas anteriores a essa data ficam em `—`.
 
-O Calendly **só sabe que alguém faltou se o anfitrião marcar a falta à mão** depois da
-reunião. Não é automático. Numa verificação feita em 2026-09-18 contra a conta da
-organização, `no_show` veio nulo em **30 de 30** reuniões concluídas numa janela de 30 dias.
-
-Com zero marcações, os dados não distinguem dois mundos bem diferentes: ninguém faltou, ou
-ninguém marca quem faltou. Exibir "0 no-show" escolheria o primeiro e afirmaria uma presença
-que nunca foi medida — um número bonito e falso, do tipo que vira meta. O travessão admite
-que a informação não existe.
-
-**Como ligar:** basta o anfitrião marcar o no-show no Calendly após a reunião. Na primeira
-janela com pelo menos uma falta marcada os três números voltam sozinhos, junto com as
-quebras de no-show por agenda e por anfitrião. Nada precisa ser mexido na dash.
+Zero faltas casadas não distingue "ninguém faltou" de "período sem cobertura". Exibir
+"0 no-show" afirmaria uma presença que nunca foi medida. O travessão admite que a informação
+não existe.
 
 O sinal é `Presenca.rastreado` (`src/lib/agenda.ts`), definido como `faltaram > 0` na janela
-selecionada. Consequência conhecida: numa janela em que o time marcou faltas mas ninguém
-faltou de verdade, a tela dirá "não rastreada" em vez de "0 faltas". É o preço de não
-conseguir separar os dois casos com o que a API entrega, e o erro é para o lado seguro.
+selecionada. Consequência conhecida: numa janela em que a tabela cobre o período mas ninguém
+faltou de verdade, a tela dirá "não rastreada" em vez de "0 faltas". O erro é para o lado seguro.
+
+**Janelas que cruzam 22/10 têm taxa subestimada:** as reuniões anteriores entram no
+denominador, mas a tabela não tem as faltas delas.
 
 ---
 
@@ -167,9 +173,10 @@ Três convenções valem em todas elas:
 
 Quatro limites conhecidos, para ninguém tomar decisão em cima de coisa que a dash não mede.
 
-1. **Presença depende de trabalho manual.** Sem alguém marcar o no-show no Calendly, não há
-   dado de presença. É o único indicador da dash que exige ação humana recorrente para
-   existir.
+1. **Presença depende de a `lead_no_shows` ser alimentada.** Sem deal "No-show" no CRM, não há
+   dado de presença. A ligação entre deal e reunião é por e-mail/telefone e **aproximada**:
+   ~5% dos deals não casam com nenhum lead (166 de 174 em 2026-11-01), e quem faltou numa
+   reunião e remarcou pode ter a falta marcada na reunião errada.
 2. **Remarcação quebra o elo entre o lead e a reunião.** Quando alguém remarca, o Calendly
    cria um evento novo, mas o registro do formulário continua apontando para o evento
    antigo. Nesses casos a reunião aparece na Agenda sem origem identificada — cai no grupo
@@ -200,8 +207,9 @@ Quatro limites conhecidos, para ninguém tomar decisão em cima de coisa que a d
 | Agenda | Score 3 | Reuniões vinculadas a lead com score 3 (renda média) |
 | Agenda | Já aconteceram | Não canceladas que já terminaram |
 | Agenda | Compareceram | Já aconteceram − no-show |
-| Agenda | No-show | Falta marcada à mão no Calendly |
+| Agenda | No-show | Deal "No-show" da `lead_no_shows`, ligado à reunião por e-mail/telefone |
 | Agenda | Taxa de no-show | No-show ÷ Já aconteceram |
+| Agenda | No-show · Score 10 / 3 | No-show só de leads com esse score; taxa sobre as que já aconteceram do mesmo score |
 
 Travessão no lugar do número significa **não medido**, nunca zero. Asterisco na taxa
 significa **menos de 10 reuniões** no denominador.

@@ -370,6 +370,10 @@ export type LeadOrigem = {
   utmSource: string;
   pais: string;
   score: number | null;
+  /** trim + minúsculas; "" se o lead não informou. Chave de cruzamento com `lead_no_shows`. */
+  email: string;
+  /** só dígitos; "" se não informou. */
+  fone: string;
 };
 
 type OrigemRow = {
@@ -379,6 +383,8 @@ type OrigemRow = {
   utm_source: string | null;
   pais: string | null;
   score: number | null;
+  email: string | null;
+  whatsapp: string | null;
 };
 
 const ORIGEM_COLS = [
@@ -388,7 +394,12 @@ const ORIGEM_COLS = [
   "utm_source",
   GEO_COLS[0],
   "score",
+  "email",
+  "whatsapp",
 ].join(", ");
+
+export const normEmail = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+export const normFone = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 
 /**
  * Mapa `uuid do evento Calendly` → origem do lead.
@@ -423,10 +434,52 @@ export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>
         utmSource: (r.utm_source || "").trim() || "(não informado)",
         pais: (r.pais || "").trim() || "(não informado)",
         score: typeof r.score === "number" ? r.score : null,
+        email: normEmail(r.email),
+        fone: normFone(r.whatsapp),
       });
     }
     if (batch.length < PAGE) break;
   }
 
   return mapa;
+}
+
+export type NoShowDeal = { email: string; fone: string };
+
+// Telefone com menos dígitos que isto não identifica ninguém (medido: 0 das 174
+// linhas de `lead_no_shows` tem fone curto; o piso só protege de lixo futuro).
+export const FONE_MIN = 10;
+
+/**
+ * Deals marcados como falta no CRM (`lead_no_shows`, deal_stage = 'No-show').
+ * A tabela não tem `calendly_event_id`: quem liga deal e reunião é e-mail/telefone,
+ * cruzados com `leads_consolidados` em `agenda.ts`. Follow-Up fica de fora —
+ * decisão do Rafael, 2026-11-01.
+ *
+ * RLS ligado e sem policy para anon: só a service_role lê. Com chave anon a
+ * resposta é 200 com lista vazia, sem erro.
+ */
+export async function getNoShowDeals(): Promise<NoShowDeal[]> {
+  const out: NoShowDeal[] = [];
+
+  for (let page = 0; ; page++) {
+    const { data, error } = await supabaseAdmin
+      .from("lead_no_shows")
+      .select("contact_email, contact_phone")
+      .eq("deal_stage", "No-show")
+      .order("id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw new Error(error.message);
+
+    const batch = (data ?? []) as unknown as {
+      contact_email: string | null;
+      contact_phone: string | null;
+    }[];
+    for (const r of batch) {
+      out.push({ email: normEmail(r.contact_email), fone: normFone(r.contact_phone) });
+    }
+    if (batch.length < PAGE) break;
+  }
+
+  return out;
 }
