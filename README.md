@@ -146,6 +146,17 @@ cache ali faria o carimbo de hora afirmar um frescor que a resposta não tem. Os
 (nome de quem não veio de formulário) mantêm o TTL por idade do evento. A `/agenda` em si
 (`getAgenda`/`getPresenca`) não é cacheada; o que ela lê, é.
 
+**Aquecimento.** As chaves do cache incluem a data da janela, então à 00:00 de São Paulo todas
+viram chaves novas. O cron do `vercel.json` (`5 3 * * *`, 03 UTC; no plano Hobby dispara em algum
+momento dessa hora) chama `GET /api/warm`, que roda as mesmas funções cacheadas das páginas para
+os filtros predefinidos — menos "Hoje" de Captação e Vendas (aquecido à 00:05 mostraria ~0 na
+1ª visita da manhã; frio custa < 1 s). Período personalizado continua frio na 1ª visita.
+Depois de um deploy, aquecer na mão:
+`curl -H "Authorization: Bearer $CRON_SECRET" https://<domínio>/api/warm`.
+
+**Auth.** A validação do cookie mora no `middleware.ts`: layout e página renderizam em paralelo,
+então um redirect no layout chegava depois de a página já ter posto os dados no corpo.
+
 **Carimbo de hora.** Cada tela mostra "Atualizado em dd/mm às HH:mm (há N min)"
 (`Atualizado`, em `ui.tsx`). O carimbo (`geradoEm`) viaja **dentro** do valor em cache — é o
 momento em que o dado foi lido, não o da visita — e na Agenda é o mais antigo entre a
@@ -162,11 +173,12 @@ entram no carimbo da Agenda.
    - `AUTH_SECRET` — string aleatória longa (ausente = erro, sem fallback)
    - `CALENDLY_TOKEN` — Personal Access Token de admin/owner (a `/agenda` exige; a `/vendas` usa só para o no-show do closer e segue sem ele)
    - `CALENDLY_ORG_URI` — opcional; vazio = descoberto via `GET /users/me`
+   - `CRON_SECRET` — segredo do cron de aquecimento (ausente = `/api/warm` responde 401)
 2. `npm install && npm run dev` → http://localhost:3000
 
 ## Deploy (Vercel)
 
-Novo projeto Vercel apontando pro repo, com as 5 env vars obrigatórias acima
+Novo projeto Vercel apontando pro repo, com as 6 env vars obrigatórias acima
 (`CALENDLY_ORG_URI` é opcional). Push no branch de produção redeploya.
 
 ## Estrutura
@@ -185,11 +197,12 @@ src/
     constants.ts  nome do cookie
   components/
     ui.tsx        peças usadas por mais de uma página (Tile, Card, Delta, FiltroPeriodo…)
-  middleware.ts   gate por presença de cookie
+  middleware.ts   valida o cookie (HMAC) antes de qualquer render; libera /login, /api/login, /api/logout, /api/warm
   app/
     layout.tsx            shell + fontes
     login/ + api/login/logout   auth
-    (app)/layout.tsx      guarda isAuthenticated() + navegação
+    (app)/layout.tsx      isAuthenticated() como 2ª linha + navegação
+    api/warm/route.ts     aquece o cache dos filtros predefinidos (cron, Bearer CRON_SECRET)
     (app)/page.tsx        Captação — o funil
     (app)/agenda/page.tsx Agenda — reuniões, presença, cancelamento
     (app)/vendas/page.tsx Vendas — receita, origem, time comercial, pagamento
