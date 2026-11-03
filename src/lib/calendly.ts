@@ -16,6 +16,8 @@ import "server-only";
 // assimetria que justifica o desenho em duas camadas do painel: o que é barato
 // renderiza na hora, a presença entra depois. O no-show NÃO sai daqui: vem da
 // `lead_no_shows` (ver `reunioesEmFalta` em agenda.ts); `no_show` do invitee é ignorado.
+// O painel só busca invitees dos eventos SEM lead — quando o evento casa com uma
+// resposta de formulário, o nome vem do banco (agenda.ts, `calcularPresenca`).
 
 const API = "https://api.calendly.com";
 
@@ -201,7 +203,9 @@ export async function listarEventos(
   // a janela pode incluir dias futuros (reuniões ainda por acontecer), então o
   // TTL da listagem segue o teto curto: um agendamento novo tem de aparecer
   for (;;) {
-    const pagina: Paged<CalendlyEvent> = await get(url, TTL_FUTURO);
+    // sem cache de fetch (revalidate 0): o cache da listagem mora em agenda.ts, com carimbo
+    // de hora — um cache aqui faria o carimbo de lá afirmar frescor que a resposta não tem
+    const pagina: Paged<CalendlyEvent> = await get(url, 0);
     eventos.push(...pagina.collection);
     const prox = pagina.pagination?.next_page;
     if (!prox) break;
@@ -219,7 +223,8 @@ function ttlDoEvento(endTime: string, agora: number): number {
 }
 
 /**
- * Invitees de um evento. É daqui que sai o nome do convidado — e é o request caro.
+ * Invitees de um evento. É daqui que sai o nome do convidado de quem não veio de
+ * formulário — e é o request caro.
  * Um evento 1:1 tem um invitee; a paginação existe para eventos coletivos.
  */
 export async function listarInvitees(

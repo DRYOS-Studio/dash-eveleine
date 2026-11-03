@@ -78,12 +78,13 @@ Exige um **Personal Access Token de admin/owner da organização** — sem esse 
 | Dado | Endpoint | Custo |
 |---|---|---|
 | status, início/fim, nome da agenda, anfitrião, cancelamento (e por quem) | `GET /scheduled_events` | **barato** — 100 por request, ~6 requests pro mês |
-| nome do convidado | `GET /scheduled_events/{uuid}/invitees` | **1 request POR evento** |
+| nome do convidado (só dos eventos **sem lead**) | `GET /scheduled_events/{uuid}/invitees` | **1 request POR evento** |
 
 O **no-show não vem do Calendly**: vem da tabela `lead_no_shows` (deals `No-show` do CRM),
 ligada à reunião por e-mail/telefone — ver `reunioesEmFalta` em `src/lib/agenda.ts`. Os
-invitees só servem para o nome na lista nominal, e **não existe listagem org-wide de
-invitees** (`/invitees` é POST-only, da Scheduling API). Por isso a página renderiza em duas
+invitees só servem para o nome na lista nominal **dos eventos sem lead** (quando o evento casa
+com uma resposta de formulário, o nome vem do banco — 93% dos eventos em 2026-11-03), e
+**não existe listagem org-wide de invitees** (`/invitees` é POST-only, da Scheduling API). Por isso a página renderiza em duas
 camadas: o barato sai na hora, e o bloco de presença entra depois via `<Suspense>`.
 
 O que torna a visão do mês viável sem banco próprio é o **Data Cache**: cada evento é uma
@@ -123,10 +124,35 @@ Contas e leitura dos campos: [manual do produto](docs/manual-do-produto.md#venda
 - **`VALOR_MIN = 100`:** venda com faturamento abaixo disso conta no total, mas fica fora de
   receita, ticket e rankings (valor do contrato ainda não preenchido no board).
 - **Closer × no-show:** `getPresencaPorHost` (`agenda.ts`) conta reuniões concluídas e faltas
-  por anfitrião só com a listagem de eventos — sem o fan-out de invitees. Closer e anfitrião
+  por anfitrião só com a listagem de eventos — sem o fan-out de invitees. A janela de reuniões
+  começa no dia da **primeira venda** da janela (não no início do filtro): listar eventos custa
+  ~1 s por 100 e a tabela só tem vendas desde 27/10. A tabela de closers é streamada em
+  `<Suspense>`: as vendas aparecem na hora e as colunas da Agenda chegam depois. Closer e anfitrião
   são ligados por `chaveNome` (`nomes.ts`): acento, caixa, pontuação e espaço. **Sem
   similaridade, de propósito** — "Thaise Vianna" e "Thais Santos" são pessoas diferentes.
 - Se o Calendly estiver sem token ou fora do ar, a página segue e o no-show do closer vira `—`.
+
+## Cache
+
+As leituras do Supabase (`getLeads`, a cola evento→lead, os deals de no-show, `getVendas`) e a
+presença por anfitrião passam por `unstable_cache` com **`CACHE_S = 60`** (`src/lib/data.ts`): uma
+visita repetida não repagina a view inteira. Passados 60 s o Next serve o valor guardado na hora
+e o renova em segundo plano (stale-while-revalidate): a visita seguinte já vê o dado novo, mas a
+**primeira depois de um intervalo longo pode mostrar números antigos** — não é um teto de 60 s.
+
+A listagem de eventos do Calendly é cacheada em `agenda.ts` (`eventosCarimbados`, **5 min**,
+`TTL_LISTAGEM_S`); `listarEventos` em `calendly.ts` não usa cache de `fetch`, de propósito: um
+cache ali faria o carimbo de hora afirmar um frescor que a resposta não tem. Os invitees
+(nome de quem não veio de formulário) mantêm o TTL por idade do evento. A `/agenda` em si
+(`getAgenda`/`getPresenca`) não é cacheada; o que ela lê, é.
+
+**Carimbo de hora.** Cada tela mostra "Atualizado em dd/mm às HH:mm (há N min)"
+(`Atualizado`, em `ui.tsx`). O carimbo (`geradoEm`) viaja **dentro** do valor em cache — é o
+momento em que o dado foi lido, não o da visita — e na Agenda é o mais antigo entre a
+listagem do Calendly e a cola evento→lead. O aviso "recarregue" só aparece quando o dado
+passou do prazo da própria fonte (`validoS`: 60 s no banco, 5 min no Calendly), porque aí
+a visita já disparou a renovação. Os deals de no-show seguem o mesmo cache de 60 s, mas não
+entram no carimbo da Agenda.
 
 ## Rodar local
 

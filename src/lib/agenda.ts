@@ -1,9 +1,11 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import {
+  CACHE_S,
   FONE_MIN,
-  getLeadsByCalendlyEvent,
   getNoShowDeals,
+  getOrigensComCarimbo,
   type LeadOrigem,
   type NoShowDeal,
   spDate,
@@ -40,7 +42,8 @@ const TOP = 10; // linhas por quebra; o resto vira "(outros)"
 // de origens custaria 6 páginas de Supabase em vez de 3. (Os fetches da
 // Calendly já contam com o Data Cache; isto resolve o lado do Supabase, que
 // não passa por `fetch` e portanto não é cacheado pelo Next.)
-const origens = cache(getLeadsByCalendlyEvent);
+const origensC = cache(getOrigensComCarimbo);
+const origens = async () => (await origensC()).mapa;
 const noShowDeals = cache(getNoShowDeals);
 
 /**
@@ -51,7 +54,22 @@ const noShowDeals = cache(getNoShowDeals);
 export const MODO_FIXTURE =
   process.env.CALENDLY_FIXTURE === "1" && process.env.NODE_ENV !== "production";
 
-const eventosDa = cache(MODO_FIXTURE ? fixtureEventos : listarEventos);
+// Listagem de eventos com carimbo de hora DENTRO do valor em cache (ver `origensEntradas`
+// em data.ts). 5 min, como o antigo TTL_FUTURO: um agendamento novo tem de aparecer.
+export const TTL_LISTAGEM_S = 300;
+const eventosCarimbados = (from: string, to: string) =>
+  unstable_cache(
+    async () => ({ geradoEm: new Date().toISOString(), eventos: await listarEventos(from, to) }),
+    ["eventos-calendly", from, to],
+    { revalidate: TTL_LISTAGEM_S },
+  )();
+const eventosC = cache(async (from: string, to: string) =>
+  MODO_FIXTURE
+    ? { geradoEm: new Date().toISOString(), eventos: await fixtureEventos(from, to) }
+    : eventosCarimbados(from, to),
+);
+const eventosDa = async (from: string, to: string) => (await eventosC(from, to)).eventos;
+const maisAntigo = (...isos: string[]) => isos.reduce((a, b) => (a < b ? a : b));
 const inviteesDe = MODO_FIXTURE
   ? (eventos: CalendlyEvent[]) => fixtureInvitees(eventos)
   : listarInviteesDe;
@@ -165,6 +183,8 @@ export type QuebraAgenda = { rows: LinhaAgenda[]; distinct: number; capped: bool
 export type DiaAgenda = { date: string; total: number; canceladas: number };
 
 export type Agenda = {
+  /** ISO-UTC do dado mais antigo usado (listagem do Calendly e cola evento→lead). */
+  geradoEm: string;
   total: number;
   ativas: number;
   canceladas: number;
@@ -239,10 +259,12 @@ function situacaoDe(
 }
 
 export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
-  const [eventos, porUuid] = await Promise.all([
-    eventosDa(period.from, period.to),
-    origens(),
+  const [eventosR, origensR] = await Promise.all([
+    eventosC(period.from, period.to),
+    origensC(),
   ]);
+  const eventos = eventosR.eventos;
+  const porUuid = origensR.mapa;
 
   // mesma pessoa com grafia diferente no Calendly vira uma linha só (ver nomes.ts)
   const hostCanon = canonizar(eventos.map(hostDe));
@@ -292,6 +314,7 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
   }
 
   return {
+    geradoEm: maisAntigo(eventosR.geradoEm, origensR.geradoEm),
     total: eventos.length,
     ativas: eventos.length - canceladas,
     canceladas,
@@ -415,8 +438,9 @@ const somaPresenca = (
 
 /**
  * Busca os invitees de cada evento da janela. É o request caro — um por
- * evento — e hoje serve só para o nome na lista nominal (`nomeDe`): a falta
- * vem da `lead_no_shows`, não do invitee.
+ * evento — e hoje serve só para o nome na lista nominal (`nomeDe`) dos eventos
+ * SEM lead: quando o evento casa com uma resposta de formulário, o nome vem dela
+ * (93% dos eventos em 2026-11-03). A falta vem da `lead_no_shows`, não do invitee.
  */
 async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
   const agora = Date.now();
@@ -428,7 +452,8 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
     noShowDeals(),
   ]);
 
-  const porEvento = await inviteesDe(eventos, agora);
+  const semNome = eventos.filter((e) => !porUuid.get(uuidDe(e.uri))?.nome);
+  const porEvento = await inviteesDe(semNome, agora);
   const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
 
   const hostCanon = canonizar(eventos.map(hostDe));
@@ -447,8 +472,9 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
 
   for (const e of eventos) {
     const uuid = uuidDe(e.uri);
+    const nomeLead = porUuid.get(uuid)?.nome;
     const invitees = porEvento.get(uuid);
-    if (!invitees) falhas++;
+    if (!nomeLead && !invitees) falhas++; // só conta quem dependia do Calendly
 
     const ativa = e.status !== "canceled";
     const concluida = ativa && Date.parse(e.end_time) <= agora;
@@ -474,7 +500,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
 
     reunioes.push({
       uuid,
-      quem: invitees ? nomeDe(invitees) : "(indisponível)",
+      quem: nomeLead || (invitees ? nomeDe(invitees) : "(indisponível)"),
       inicio: e.start_time,
       agenda,
       host,
@@ -511,36 +537,52 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
  */
 export const getPresenca = cache(calcularPresenca);
 
-export type PresencaHost = { nome: string; concluidas: number; faltas: number };
+export type PresencaHost = {
+  /** `chaveNome(nome)` — o que o chamador usa para ligar um closer a este anfitrião. */
+  chave: string;
+  nome: string;
+  concluidas: number;
+  faltas: number;
+};
 
 /**
  * Presença por anfitrião SEM o fan-out de invitees: contar reuniões concluídas
  * e faltas só precisa da listagem de eventos (barata) + `lead_no_shows`. É o que
  * a página de Vendas usa para cruzar closer × anfitrião — `getPresenca` custaria
  * um request por evento. Chaveado por `chaveNome` (grafia ≠ pessoa diferente).
- * `from`/`to` em ISO-UTC; `to` exclusivo.
+ * `from`/`to` em ISO-UTC; `to` exclusivo. Devolve lista (não Map) para caber no
+ * Data Cache.
  */
-export const getPresencaPorHost = cache(
-  async (from: string, to: string): Promise<Map<string, PresencaHost>> => {
-    const agora = Date.now();
-    const [eventos, porUuid, deals] = await Promise.all([
-      eventosDa(from, to),
-      origens(),
-      noShowDeals(),
-    ]);
-    const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
-    const canon = canonizar(eventos.map(hostDe));
+export async function lerPresencaPorHost(
+  from: string,
+  to: string,
+): Promise<{ geradoEm: string; hosts: PresencaHost[] }> {
+  const agora = Date.now();
+  const [eventosR, origensR, deals] = await Promise.all([
+    eventosC(from, to),
+    origensC(),
+    noShowDeals(),
+  ]);
+  const eventos = eventosR.eventos;
+  const porUuid = origensR.mapa;
+  const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
+  const canon = canonizar(eventos.map(hostDe));
 
-    const mapa = new Map<string, PresencaHost>();
-    for (const e of eventos) {
-      if (e.status === "canceled" || Date.parse(e.end_time) > agora) continue;
-      const nome = canon(hostDe(e));
-      const k = chaveNome(nome);
-      const cur = mapa.get(k) ?? { nome, concluidas: 0, faltas: 0 };
-      cur.concluidas++;
-      if (emFalta.has(uuidDe(e.uri))) cur.faltas++;
-      mapa.set(k, cur);
-    }
-    return mapa;
-  },
-);
+  const mapa = new Map<string, PresencaHost>();
+  for (const e of eventos) {
+    if (e.status === "canceled" || Date.parse(e.end_time) > agora) continue;
+    const nome = canon(hostDe(e));
+    const chave = chaveNome(nome);
+    const cur = mapa.get(chave) ?? { chave, nome, concluidas: 0, faltas: 0 };
+    cur.concluidas++;
+    if (emFalta.has(uuidDe(e.uri))) cur.faltas++;
+    mapa.set(chave, cur);
+  }
+  // dado mais antigo entre as entradas (os deals de no-show seguem o mesmo cache de CACHE_S)
+  return { geradoEm: maisAntigo(eventosR.geradoEm, origensR.geradoEm), hosts: [...mapa.values()] };
+}
+
+export const getPresencaPorHost = (from: string, to: string) =>
+  unstable_cache(() => lerPresencaPorHost(from, to), ["presenca-por-host", from, to], {
+    revalidate: CACHE_S,
+  })();

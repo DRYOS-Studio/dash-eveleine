@@ -1,7 +1,15 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { supabaseAdmin } from "./supabase";
-import { getLeadsPorEmail, normEmail, spMidnight, type Period } from "./data";
-import { getPresencaPorHost } from "./agenda";
+import {
+  CACHE_S,
+  getLeadsPorEmail,
+  normEmail,
+  spMidnight,
+  spToday,
+  type Period,
+} from "./data";
+import { getPresencaPorHost, type PresencaHost } from "./agenda";
 import { canonizar, chaveNome } from "./nomes";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +72,8 @@ export type LinhaCloser = LinhaVenda & { concluidas: number | null; faltas: numb
 export type DiaVenda = { date: string; vendas: number; faturamento: number; caixa: number };
 
 export type Vendas = {
+  /** ISO-UTC do momento em que o dado foi lido do banco (vem dentro do cache). */
+  geradoEm: string;
   /** Nenhuma linha na tabela inteira (não só na janela): chave sem acesso ou tabela vazia. */
   tabelaVazia: boolean;
   total: number; // todas as vendas da janela
@@ -84,13 +94,14 @@ export type Vendas = {
   byUtm: LinhaVenda[];
   byFunil: LinhaVenda[];
   byScore: LinhaVenda[];
-  byCloser: LinhaCloser[];
+  /** Só vendas; reuniões/no-show do anfitrião chegam por `getPresencaClosers` (streamado pela página). */
+  byCloser: LinhaVenda[];
+  /** Janela de reuniões a cruzar com os closers (ISO-UTC, `ate` exclusivo); null se não há venda. */
+  janelaPresenca: { de: string; ate: string } | null;
   byAgendadoPor: LinhaVenda[];
   byForma: LinhaVenda[];
   byProduto: LinhaVenda[];
   byContrato: LinhaVenda[];
-  /** Agenda/Calendly fora do ar ou sem token: closer × no-show vira "—". */
-  presencaIndisponivel: boolean;
 };
 
 const SEM_LEAD = "(sem lead)";
@@ -149,29 +160,23 @@ async function totalNaTabela(): Promise<number> {
   return count ?? 0;
 }
 
-export async function getVendas(p: Period): Promise<Vendas> {
+export async function calcularVendas(p: Period): Promise<Vendas> {
   const [rows, naTabela] = await Promise.all([lerVendas(p), totalNaTabela()]);
 
   const validasRows = rows.filter((r) => num(r.faturamento) >= VALOR_MIN);
   const leads = await getLeadsPorEmail(validasRows.map((r) => normEmail(r.email)));
 
-  // Closer e anfitrião da Agenda são a mesma pessoa grafada de jeitos diferentes:
-  // o rótulo canônico é calculado sobre a UNIÃO das duas fontes (ver nomes.ts).
-  let presenca: Awaited<ReturnType<typeof getPresencaPorHost>> | null = null;
+  // Janela das reuniões a cruzar: do dia da PRIMEIRA venda da janela até agora. A tabela só
+  // tem vendas desde 27/10/2026; começar no início do filtro ("30 dias") listaria no
+  // Calendly semanas de eventos sem venda nenhuma para comparar (~1 s por 100 eventos).
   const datas = rows.map((r) => r.data_compra).filter((d): d is string => !!d).sort();
-  const de = p.from ?? (datas[0] ? isoMeiaNoiteSP(datas[0]) : null);
-  const ate = p.to ?? new Date().toISOString();
-  if (de) {
-    try {
-      presenca = await getPresencaPorHost(de, ate);
-    } catch {
-      presenca = null; // sem token do Calendly ou API fora: o resto da página segue
-    }
-  }
-  const canonCloser = canonizar([
-    ...rows.map((r) => r.closer ?? ""),
-    ...[...(presenca?.values() ?? [])].map((h) => h.nome),
-  ]);
+  const [hy, hm, hd] = spToday();
+  const janelaPresenca = datas[0]
+    ? { de: isoMeiaNoiteSP(datas[0]), ate: p.to ?? spMidnight(hy, hm, hd + 1) }
+    : null;
+
+  // closers que só diferem na grafia viram uma linha (ver nomes.ts)
+  const canonCloser = canonizar(rows.map((r) => r.closer ?? ""));
   const canonAgendador = canonizar(rows.map((r) => r.agendado_por ?? ""));
 
   const mUtm = new Map<string, LinhaVenda>();
@@ -244,12 +249,8 @@ export async function getVendas(p: Period): Promise<Vendas> {
 
   const maiorValor = valores.length ? Math.max(...valores) : null;
 
-  const byCloser: LinhaCloser[] = ordenar(mCloser).map((l) => {
-    const h = presenca?.get(chaveNome(l.label));
-    return { ...l, concluidas: h?.concluidas ?? null, faltas: h?.faltas ?? null };
-  });
-
   return {
+    geradoEm: new Date().toISOString(),
     tabelaVazia: naTabela === 0,
     total: rows.length,
     validas: validasRows.length,
@@ -268,12 +269,49 @@ export async function getVendas(p: Period): Promise<Vendas> {
     byUtm: ordenar(mUtm),
     byFunil: ordenar(mFunil),
     byScore: ordenar(mScore),
-    byCloser,
+    byCloser: ordenar(mCloser),
+    janelaPresenca,
     byAgendadoPor: ordenar(mAgendador),
     byForma: ordenar(mForma),
     byProduto: ordenar(mProduto),
     byContrato: ordenar(mContrato),
-    presencaIndisponivel: presenca === null,
+  };
+}
+
+/** Leitura com cache de CACHE_S; a chave é a janela de datas do filtro. */
+export const getVendas = (p: Period): Promise<Vendas> =>
+  unstable_cache(() => calcularVendas(p), ["vendas", p.fromDate ?? "", p.toDate ?? ""], {
+    revalidate: CACHE_S,
+  })();
+
+/**
+ * Liga cada closer ao anfitrião de mesmo nome na Agenda (por grafia — nomes.ts) e
+ * traz reuniões concluídas e faltas dele. Separado de `getVendas` porque é a parte
+ * lenta (listagem de eventos no Calendly): a página streama esta tabela em Suspense.
+ * Sem token do Calendly ou com a API fora, `indisponivel` e as colunas viram "—".
+ * `ler` é injetável só para teste fora do runtime do Next.
+ */
+export async function getPresencaClosers(
+  janela: { de: string; ate: string },
+  closers: LinhaVenda[],
+  ler: (de: string, ate: string) => Promise<{ geradoEm: string; hosts: PresencaHost[] }> = getPresencaPorHost,
+): Promise<{ linhas: LinhaCloser[]; indisponivel: boolean; geradoEm: string | null }> {
+  let hosts: Map<string, PresencaHost> | null = null;
+  let geradoEm: string | null = null;
+  try {
+    const r = await ler(janela.de, janela.ate);
+    hosts = new Map(r.hosts.map((h) => [h.chave, h]));
+    geradoEm = r.geradoEm;
+  } catch {
+    hosts = null; // sem token do Calendly ou API fora: o resto da página segue
+  }
+  return {
+    indisponivel: hosts === null,
+    geradoEm,
+    linhas: closers.map((l) => {
+      const h = hosts?.get(chaveNome(l.label));
+      return { ...l, concluidas: h?.concluidas ?? null, faltas: h?.faltas ?? null };
+    }),
   };
 }
 

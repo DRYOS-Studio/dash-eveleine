@@ -1,4 +1,4 @@
-import type { Breakdown } from "@/lib/data";
+import { CACHE_S, type Breakdown } from "@/lib/data";
 
 // Peças de apresentação usadas por mais de uma página (Captação e Agenda).
 // O que serve a uma página só continua morando no arquivo dela — aqui entra
@@ -27,6 +27,46 @@ export function legenda(b: Breakdown): string {
   return b.capped
     ? `${nf(b.distinct)} ${plural} — top 10 abaixo`
     : `${nf(b.distinct)} ${plural}`;
+}
+
+const TZ_SP_MS = 3 * 3600_000; // America/Sao_Paulo = UTC-3, sem horário de verão
+
+function idade(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return "há instantes";
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86_400) return `há ${Math.round(s / 3600)} h`;
+  return `há ${Math.round(s / 86_400)} d`;
+}
+
+/**
+ * Quando o dado foi LIDO — o carimbo vem de dentro do valor em cache, então uma resposta
+ * servida do cache (mesmo velha) mostra a hora verdadeira, não a da visita.
+ *
+ * Só sugere recarregar quando o dado passou do prazo de validade da fonte (`validoS`, mais
+ * 30 s de folga para a renovação): aí a visita já disparou a renovação em segundo plano e
+ * recarregar traz o atual. Dentro do prazo recarregar não muda nada — a listagem do
+ * Calendly, por exemplo, vale 5 min de propósito.
+ */
+export function Atualizado({
+  geradoEm,
+  rotulo = "Atualizado",
+  validoS = CACHE_S,
+}: {
+  geradoEm: string;
+  rotulo?: string;
+  validoS?: number;
+}) {
+  const t = Date.parse(geradoEm);
+  const sp = new Date(t - TZ_SP_MS).toISOString(); // lido em UTC = hora de SP
+  const quando = `${sp.slice(8, 10)}/${sp.slice(5, 7)} às ${sp.slice(11, 16)}`;
+  const ms = Date.now() - t;
+  return (
+    <span className="text-xs text-[var(--color-muted-2)]">
+      {rotulo} em {quando} ({idade(ms)})
+      {ms > (validoS + 30) * 1000 ? " — recarregue para ver o mais recente" : ""}
+    </span>
+  );
 }
 
 export function Delta({
