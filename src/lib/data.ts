@@ -1,5 +1,13 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { supabaseAdmin } from "./supabase";
+
+// Cache das leituras do Supabase (Data Cache do Next, compartilhado entre instâncias).
+// Sem ele, toda visita repagina a view inteira. Passado CACHE_S o Next serve o valor
+// guardado NA HORA e o renova em segundo plano (stale-while-revalidate; medido: 0,04 s
+// com o cache expirado): a visita seguinte já vê o dado novo, mas a PRIMEIRA depois de
+// um intervalo longo pode ver números antigos. Não é um teto de 60 s de defasagem.
+export const CACHE_S = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fonte de leitura dos leads: view `leads_consolidados` (confirmada no banco-alvo
@@ -87,6 +95,8 @@ export type Day = {
 };
 
 export type LeadsSummary = {
+  /** ISO-UTC do momento em que o dado foi lido do banco (vem dentro do cache). */
+  geradoEm: string;
   funnel: Funnel;
   /** Mesmo funil na janela anterior de igual duração; null em `all`. */
   anterior: Funnel | null;
@@ -259,8 +269,14 @@ const funnelOf = (rows: Row[]): Funnel => {
 export const spDate = (iso: string) =>
   new Date(Date.parse(iso) - TZ_OFFSET_HOURS * 3600_000).toISOString().slice(0, 10);
 
+/** Mesma leitura, com cache de CACHE_S: a chave é a janela resolvida (muda 1x por dia nas relativas). */
+export const getLeads = (period: Period): Promise<LeadsSummary> =>
+  unstable_cache(() => lerLeads(period), ["leads", period.key, period.from ?? "", period.to ?? ""], {
+    revalidate: CACHE_S,
+  })();
+
 /** Lê a janela (e a anterior, p/ deltas) e agrega funil, série diária e quebras. */
-export async function getLeads(period: Period): Promise<LeadsSummary> {
+export async function lerLeads(period: Period): Promise<LeadsSummary> {
   const { from, to } = period;
   const prev = periodoAnterior(period);
 
@@ -344,6 +360,7 @@ export async function getLeads(period: Period): Promise<LeadsSummary> {
   };
 
   return {
+    geradoEm: new Date().toISOString(),
     funnel: funnelOf(rows),
     anterior: rowsPrev ? funnelOf(rowsPrev) : null,
     daily: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
@@ -379,6 +396,8 @@ export type LeadOrigem = {
   utmSource: string;
   pais: string;
   score: number | null;
+  /** Nome da resposta do formulário; "" se ausente. Evita buscar o convidado no Calendly. */
+  nome: string;
   /** trim + minúsculas; "" se o lead não informou. Chave de cruzamento com `lead_no_shows`. */
   email: string;
   /** só dígitos; "" se não informou. */
@@ -392,6 +411,7 @@ type OrigemRow = {
   utm_source: string | null;
   pais: string | null;
   score: number | null;
+  nome: string | null;
   email: string | null;
   whatsapp: string | null;
 };
@@ -403,6 +423,7 @@ const ORIGEM_COLS = [
   "utm_source",
   GEO_COLS[0],
   "score",
+  "nome",
   "email",
   "whatsapp",
 ].join(", ");
@@ -420,7 +441,7 @@ export const normFone = (v: string | null | undefined) => (v ?? "").replace(/\D/
  * Chave em minúsculas: o UUID vem do Calendly num request e do Postgres no
  * outro, e não temos garantia de que os dois normalizem o caso igual.
  */
-export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>> {
+export async function lerLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>> {
   const mapa = new Map<string, LeadOrigem>();
 
   for (let page = 0; ; page++) {
@@ -445,6 +466,7 @@ export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>
         utmSource: (r.utm_source || "").trim() || "(não informado)",
         pais: (r.pais || "").trim() || "(não informado)",
         score: typeof r.score === "number" ? r.score : null,
+        nome: (r.nome || "").trim(),
         email: normEmail(r.email),
         fone: normFone(r.whatsapp),
       });
@@ -453,6 +475,26 @@ export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>
   }
 
   return mapa;
+}
+
+
+// Map não é serializável no Data Cache: guarda as entradas e remonta o Map. `geradoEm` é o
+// momento em que o dado foi LIDO do banco — fica dentro do valor em cache, então uma
+// resposta servida do cache (mesmo velha) carrega o carimbo verdadeiro.
+const origensEntradas = unstable_cache(
+  async () => ({ geradoEm: new Date().toISOString(), entradas: [...(await lerLeadsByCalendlyEvent())] }),
+  ["origens-por-evento"],
+  { revalidate: CACHE_S },
+);
+export async function getOrigensComCarimbo(): Promise<{
+  mapa: Map<string, LeadOrigem>;
+  geradoEm: string;
+}> {
+  const { entradas, geradoEm } = await origensEntradas();
+  return { mapa: new Map(entradas), geradoEm };
+}
+export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>> {
+  return (await getOrigensComCarimbo()).mapa;
 }
 
 export type NoShowDeal = { email: string; fone: string };
@@ -470,7 +512,7 @@ export const FONE_MIN = 10;
  * RLS ligado e sem policy para anon: só a service_role lê. Com chave anon a
  * resposta é 200 com lista vazia, sem erro.
  */
-export async function getNoShowDeals(): Promise<NoShowDeal[]> {
+export async function lerNoShowDeals(): Promise<NoShowDeal[]> {
   const out: NoShowDeal[] = [];
 
   for (let page = 0; ; page++) {
@@ -494,6 +536,10 @@ export async function getNoShowDeals(): Promise<NoShowDeal[]> {
 
   return out;
 }
+
+export const getNoShowDeals = unstable_cache(lerNoShowDeals, ["no-show-deals"], {
+  revalidate: CACHE_S,
+});
 
 export type LeadDaVenda = {
   form: string;

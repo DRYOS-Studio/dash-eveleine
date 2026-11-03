@@ -1,12 +1,16 @@
+import { Suspense } from "react";
 import { RANGE_KEYS, RANGE_LABEL, resolvePeriod } from "@/lib/data";
+import { TTL_LISTAGEM_S } from "@/lib/agenda";
 import {
+  getPresencaClosers,
   getVendas,
   VALOR_MIN,
   type DiaVenda,
   type LinhaCloser,
   type LinhaVenda,
+  type Vendas,
 } from "@/lib/vendas";
-import { Card, FiltroPeriodo, Tile, diaMes, fmtDate, nf, niceMax, pf, taxa } from "@/components/ui";
+import { Atualizado, Card, FiltroPeriodo, Tile, diaMes, fmtDate, nf, niceMax, pf, taxa } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +75,8 @@ function TabelaQuebra({ linhas, coluna }: { linhas: LinhaVenda[]; coluna: string
   );
 }
 
-/** Closer + o no-show do anfitrião de mesmo nome na Agenda. */
-function TabelaCloser({ linhas }: { linhas: LinhaCloser[] }) {
+/** Closer + o no-show do anfitrião de mesmo nome na Agenda. `carregando`: as colunas da Agenda ainda não chegaram. */
+function TabelaCloser({ linhas, carregando }: { linhas: LinhaCloser[]; carregando?: boolean }) {
   if (linhas.length === 0) {
     return <p className="text-sm text-[var(--color-muted)]">Nenhuma venda no período.</p>;
   }
@@ -101,12 +105,14 @@ function TabelaCloser({ linhas }: { linhas: LinhaCloser[] }) {
                 {brl(l.faturamento / l.vendas)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-[var(--color-muted)]">
-                {l.concluidas === null ? "—" : nf(l.concluidas)}
+                {carregando ? "…" : l.concluidas === null ? "—" : nf(l.concluidas)}
               </td>
               <td className="py-2 pl-3 text-right tabular-nums text-[var(--color-muted)]">
-                {l.concluidas === null || l.faltas === null || l.concluidas === 0
-                  ? "—"
-                  : `${nf(l.faltas)} · ${pf(taxa(l.faltas, l.concluidas))}${l.concluidas < N_BAIXO ? "*" : ""}`}
+                {carregando
+                  ? "…"
+                  : l.concluidas === null || l.faltas === null || l.concluidas === 0
+                    ? "—"
+                    : `${nf(l.faltas)} · ${pf(taxa(l.faltas, l.concluidas))}${l.concluidas < N_BAIXO ? "*" : ""}`}
               </td>
             </tr>
           ))}
@@ -238,6 +244,55 @@ function TabelaDias({ daily }: { daily: DiaVenda[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Time comercial — streamado: a parte das vendas aparece na hora; reuniões e no-show
+// dependem da listagem de eventos do Calendly (~1 s por 100 eventos).
+
+const SUB_CLOSER =
+  "Vendas por closer, com o no-show do anfitrião de mesmo nome na Agenda, do dia da primeira venda até agora.";
+
+const semPresenca = (linhas: LinhaVenda[]): LinhaCloser[] =>
+  linhas.map((l) => ({ ...l, concluidas: null, faltas: null }));
+
+function EsqueletoCloser({ v }: { v: Vendas }) {
+  return (
+    <Card title="Time comercial" sub={SUB_CLOSER} wide>
+      <TabelaCloser linhas={semPresenca(v.byCloser)} carregando />
+      <p className="mt-3 text-xs text-[var(--color-muted-2)]">
+        Buscando reuniões e no-show na Agenda…
+      </p>
+    </Card>
+  );
+}
+
+async function BlocoCloser({ v }: { v: Vendas }) {
+  const { linhas, indisponivel, geradoEm } = v.janelaPresenca
+    ? await getPresencaClosers(v.janelaPresenca, v.byCloser)
+    : { linhas: semPresenca(v.byCloser), indisponivel: false, geradoEm: null };
+
+  return (
+    <Card title="Time comercial" sub={SUB_CLOSER} wide>
+      <TabelaCloser linhas={linhas} />
+      <p className="mt-3 text-xs text-[var(--color-muted-2)]">
+        {indisponivel
+          ? "Agenda indisponível neste momento (Calendly sem token ou fora do ar): reuniões e no-show aparecem como —. "
+          : ""}
+        * menos de {N_BAIXO} reuniões concluídas — taxa é ruído de amostra. Nomes são ligados por
+        grafia (acento, caixa e espaço); grafias que não coincidem ficam como pessoas distintas.
+      </p>
+      {geradoEm && (
+        <p className="mt-1">
+          <Atualizado
+            geradoEm={geradoEm}
+            rotulo="Reuniões e no-show da Agenda: lidos"
+            validoS={TTL_LISTAGEM_S}
+          />
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default async function Page({
   searchParams,
@@ -274,6 +329,7 @@ export default async function Page({
             : ""}
           por data da compra, fuso de São Paulo
         </p>
+        <Atualizado geradoEm={v.geradoEm} />
       </header>
 
       {v.tabelaVazia ? (
@@ -397,21 +453,9 @@ export default async function Page({
             </Card>
           </div>
 
-          <Card
-            title="Time comercial"
-            sub="Vendas por closer, com o no-show do anfitrião de mesmo nome na Agenda (mesmo período)."
-            wide
-          >
-            <TabelaCloser linhas={v.byCloser} />
-            <p className="mt-3 text-xs text-[var(--color-muted-2)]">
-              {v.presencaIndisponivel
-                ? "Agenda indisponível neste momento (Calendly sem token ou fora do ar): reuniões e no-show aparecem como —. "
-                : ""}
-              * menos de {N_BAIXO} reuniões concluídas — taxa é ruído de amostra. Nomes são
-              ligados por grafia (acento, caixa e espaço); grafias que não coincidem ficam como
-              pessoas distintas.
-            </p>
-          </Card>
+          <Suspense fallback={<EsqueletoCloser v={v} />}>
+            <BlocoCloser v={v} />
+          </Suspense>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Card title="Forma de pagamento" sub="Faturamento e caixa por forma.">

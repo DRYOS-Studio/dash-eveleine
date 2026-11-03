@@ -8,6 +8,7 @@ import {
   type Funnel,
 } from "@/lib/data";
 import {
+  Atualizado,
   Card,
   Delta,
   FiltroPeriodo,
@@ -414,6 +415,7 @@ export default async function Page({
             ? `${fmtDate(period.fromDate)} a ${fmtDate(period.toDate)} · fuso de São Paulo`
             : "Todo o histórico"}
         </p>
+        <Atualizado geradoEm={data.geradoEm} />
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
