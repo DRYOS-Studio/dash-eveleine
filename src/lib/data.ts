@@ -37,6 +37,15 @@ const TOP = 10; // barras por quebra; o resto vira uma linha "(outros)"
 
 export type RangeKey = "hoje" | "ontem" | "7" | "30" | "90" | "all";
 export const RANGE_KEYS: RangeKey[] = ["hoje", "ontem", "7", "30", "90", "all"];
+// Compartilhado por Captação e Vendas (os dois usos que justificam sair da página).
+export const RANGE_LABEL: Record<RangeKey, string> = {
+  hoje: "Hoje",
+  ontem: "Ontem",
+  "7": "7 dias",
+  "30": "30 dias",
+  "90": "90 dias",
+  all: "Tudo",
+};
 
 /**
  * Estágios do funil, da coluna `status` da view. São mutuamente exclusivos:
@@ -398,6 +407,10 @@ const ORIGEM_COLS = [
   "whatsapp",
 ].join(", ");
 
+/** Nome do formulário na dash: alias de form recriado > `form_name` > `form_id` cru. */
+const rotuloForm = (formId: string | null, formName: string | null) =>
+  FORM_ALIAS[formId ?? ""] ?? (formName || formId || "(sem nome)").trim();
+
 export const normEmail = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
 export const normFone = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 
@@ -428,9 +441,7 @@ export async function getLeadsByCalendlyEvent(): Promise<Map<string, LeadOrigem>
       // (reenvio do formulário), a mais antiga é a que gerou o agendamento
       if (mapa.has(uuid)) continue;
       mapa.set(uuid, {
-        form:
-          FORM_ALIAS[r.form_id ?? ""] ??
-          (r.form_name || r.form_id || "(sem nome)").trim(),
+        form: rotuloForm(r.form_id, r.form_name),
         utmSource: (r.utm_source || "").trim() || "(não informado)",
         pais: (r.pais || "").trim() || "(não informado)",
         score: typeof r.score === "number" ? r.score : null,
@@ -482,4 +493,67 @@ export async function getNoShowDeals(): Promise<NoShowDeal[]> {
   }
 
   return out;
+}
+
+export type LeadDaVenda = {
+  form: string;
+  utmSource: string;
+  score: number | null;
+  /** submitted_at da resposta mais antiga do e-mail — início do ciclo de venda. */
+  primeiroContato: string;
+};
+
+const LOTE_EMAIL = 100; // `.in()` vai na URL: 100 e-mails ≈ 3 KB, bem abaixo do limite
+
+/**
+ * Lead por e-mail, para ligar uma venda à origem dela. Só e-mail: o telefone
+ * exigiria varrer as 22 mil linhas da view (o `whatsapp` vem com máscara), e
+ * medido em 2026-11-03 ele só acrescenta 2 das 33 vendas. O e-mail do lead já
+ * vem em minúsculas no banco (0 de 22.394 fora do padrão).
+ *
+ * Várias respostas do mesmo e-mail: origem (form/UTM/score) vem da MAIS RECENTE
+ * — é a que antecede a compra —, e `primeiroContato` da mais antiga.
+ */
+export async function getLeadsPorEmail(emails: string[]): Promise<Map<string, LeadDaVenda>> {
+  const mapa = new Map<string, LeadDaVenda>();
+  const unicos = [...new Set(emails.filter(Boolean))];
+
+  for (let i = 0; i < unicos.length; i += LOTE_EMAIL) {
+    const { data, error } = await supabaseAdmin
+      .from(SOURCE)
+      .select(`email, ${COL.formId}, ${COL.formName}, utm_source, score, ${COL.submittedAt}`)
+      .in("email", unicos.slice(i, i + LOTE_EMAIL))
+      .order(COL.submittedAt, { ascending: false })
+      .range(0, PAGE - 1);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as unknown as {
+      email: string;
+      form_id: string | null;
+      form_name: string | null;
+      utm_source: string | null;
+      score: number | null;
+      submitted_at: string;
+    }[];
+    // lote cheio = pode ter cortado respostas; falhar alto em vez de errar calado
+    if (rows.length >= PAGE) throw new Error("getLeadsPorEmail: lote truncado em 1000 linhas");
+
+    for (const r of rows) {
+      const k = normEmail(r.email);
+      const atual = mapa.get(k);
+      if (!atual) {
+        // 1ª vista = mais recente (ordem desc)
+        mapa.set(k, {
+          form: rotuloForm(r.form_id, r.form_name),
+          utmSource: (r.utm_source || "").trim() || "(não informado)",
+          score: typeof r.score === "number" ? r.score : null,
+          primeiroContato: r.submitted_at,
+        });
+      } else if (r.submitted_at < atual.primeiroContato) {
+        atual.primeiroContato = r.submitted_at;
+      }
+    }
+  }
+
+  return mapa;
 }

@@ -29,6 +29,7 @@ export default async function AppLayout({
           {[
             ["/", "Captação"],
             ["/agenda", "Agenda"],
+            ["/vendas", "Vendas"],
           ].map(([href, nome]) => (
             <a
               key={href}
