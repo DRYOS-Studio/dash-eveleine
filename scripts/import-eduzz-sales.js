@@ -20,8 +20,8 @@
  * Campos derivados (purchase_sequence, is_recompra, days_since_*) são calculados só entre as vendas
  * da Eduzz (regra da recompra por product_id, como na Hotmart). Não tocam nas linhas da Hotmart.
  *
- * customers: cria quem ainda não existe (e-mail novo, com ao menos uma venda paga); em quem já existe só
- * preenche nome/telefone vazios. Quem só tem venda reembolsada não vira cliente.
+ * customers: cria quem ainda não existe (transactions.customer_email tem FK para customers.email); em quem já
+ * existe só preenche nome/telefone vazios. Quem só tem venda reembolsada entra com total_purchases = 0 e sem 1ª compra.
  *
  * Uso:
  *   node --env-file=.env.local scripts/import-eduzz-sales.js "<arquivo.csv>"           # dry-run
@@ -198,6 +198,20 @@ async function main() {
     });
   }
 
+  // Quem só tem venda reembolsada também precisa existir em customers (FK), sem compras contadas.
+  const nomeFone = new Map();
+  for (const t of tx) {
+    if (!nomeFone.has(t.customer_email)) nomeFone.set(t.customer_email, { name: null, phone: phones.get(t.customer_email) || null });
+    if (t.customer_name && !nomeFone.get(t.customer_email).name) nomeFone.get(t.customer_email).name = t.customer_name;
+  }
+  for (const [email, d] of nomeFone) {
+    if (byCust.has(email)) continue;
+    customers.push({
+      email, name: d.name, phone: d.phone, first_purchase_at: null, first_product_id: null, first_product_name: null,
+      total_purchases: 0, total_spent_bruto: 0, total_spent_liquido: 0,
+    });
+  }
+
   // Estado atual do banco
   const existentes = new Map((await fetchAll("customers", "email, name, phone")).map((c) => [c.email, c]));
   const { data: jaTem, error: eTx } = await supabase
@@ -217,7 +231,7 @@ async function main() {
 
   const pagas = tx.filter((t) => t.status === "APPROVED");
   const datas = tx.map((t) => t.approved_at).sort();
-  const so_reembolso = new Set(tx.map((t) => t.customer_email)).size - byCust.size;
+  const so_reembolso = customers.length - byCust.size;
   console.log("\n--- transactions ---");
   console.log(`linhas: ${tx.length} (APPROVED ${pagas.length} · REFUNDED ${tx.length - pagas.length}) · já existem no banco: ${jaTem.length}`);
   console.log(`período: ${datas[0].slice(0, 10)} a ${datas[datas.length - 1].slice(0, 10)}`);
@@ -226,7 +240,7 @@ async function main() {
   console.log("\n--- products ---");
   for (const p of products.values()) console.log(`  ${p.id} | ${p.name} | ${p.family} | ${p.edition}`);
   console.log("\n--- customers ---");
-  console.log(`clientes com venda paga: ${customers.length} · novos: ${novos.length} · já existiam: ${emBanco.length} (preencher nome/telefone vazio: ${preencher.length}) · só reembolso (não criados): ${so_reembolso}`);
+  console.log(`clientes: ${customers.length} (com venda paga ${byCust.size} · só reembolso ${so_reembolso}) · novos: ${novos.length} · já existiam: ${emBanco.length} (preencher nome/telefone vazio: ${preencher.length})`);
 
   if (!APPLY) {
     console.log("\nDry-run concluído. Rode com --apply para gravar.");
@@ -242,8 +256,9 @@ async function main() {
     }
   };
   await lote("products", "products", [...products.values()], { onConflict: "id" });
-  await lote("transactions", "transactions", tx, { onConflict: "transaction_code" });
   await lote("customers", "customers", novos, { onConflict: "email", ignoreDuplicates: true });
+  if (erros.length) fail("erro ao gravar clientes; transactions não gravadas:\n" + erros.join("\n"));
+  await lote("transactions", "transactions", tx, { onConflict: "transaction_code" });
   for (const u of preencher) {
     const { error } = await supabase.from("customers").update(u.patch).eq("email", u.email);
     if (error) erros.push(`customers ${u.email}: ${error.message}`);
