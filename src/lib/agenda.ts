@@ -19,6 +19,7 @@ import {
   type CalendlyInvitee,
 } from "./calendly";
 import { fixtureEventos, fixtureInvitees } from "./calendly-fixture";
+import { canonizar, chaveNome } from "./nomes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agregação do painel de agendamento.
@@ -243,6 +244,9 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     origens(),
   ]);
 
+  // mesma pessoa com grafia diferente no Calendly vira uma linha só (ver nomes.ts)
+  const hostCanon = canonizar(eventos.map(hostDe));
+
   const mapAgenda = new Map<string, LinhaAgenda>();
   const mapHost = new Map<string, LinhaAgenda>();
   const mapForm = new Map<string, LinhaAgenda>();
@@ -276,7 +280,7 @@ export async function getAgenda(period: AgendaPeriod): Promise<Agenda> {
     }
 
     bump(mapAgenda, agendaDe(e), cancelada);
-    bump(mapHost, hostDe(e), cancelada);
+    bump(mapHost, hostCanon(hostDe(e)), cancelada);
     bump(mapForm, origem?.form ?? SEM_LEAD, cancelada);
     bump(mapUtm, origem?.utmSource ?? SEM_LEAD, cancelada);
 
@@ -427,6 +431,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
   const porEvento = await inviteesDe(eventos, agora);
   const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
 
+  const hostCanon = canonizar(eventos.map(hostDe));
   const mapAgenda = new Map<string, LinhaPresenca>();
   const mapHost = new Map<string, LinhaPresenca>();
   const reunioes: Reuniao[] = [];
@@ -463,7 +468,7 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
     }
 
     const agenda = agendaDe(e);
-    const host = hostDe(e);
+    const host = hostCanon(hostDe(e));
     somaPresenca(mapAgenda, agenda, concluida, falta);
     somaPresenca(mapHost, host, concluida, falta);
 
@@ -505,3 +510,37 @@ async function calcularPresenca(period: AgendaPeriod): Promise<Presenca> {
  * o fan-out por evento aconteceria duas vezes.
  */
 export const getPresenca = cache(calcularPresenca);
+
+export type PresencaHost = { nome: string; concluidas: number; faltas: number };
+
+/**
+ * Presença por anfitrião SEM o fan-out de invitees: contar reuniões concluídas
+ * e faltas só precisa da listagem de eventos (barata) + `lead_no_shows`. É o que
+ * a página de Vendas usa para cruzar closer × anfitrião — `getPresenca` custaria
+ * um request por evento. Chaveado por `chaveNome` (grafia ≠ pessoa diferente).
+ * `from`/`to` em ISO-UTC; `to` exclusivo.
+ */
+export const getPresencaPorHost = cache(
+  async (from: string, to: string): Promise<Map<string, PresencaHost>> => {
+    const agora = Date.now();
+    const [eventos, porUuid, deals] = await Promise.all([
+      eventosDa(from, to),
+      origens(),
+      noShowDeals(),
+    ]);
+    const emFalta = reunioesEmFalta(eventos, porUuid, deals, agora);
+    const canon = canonizar(eventos.map(hostDe));
+
+    const mapa = new Map<string, PresencaHost>();
+    for (const e of eventos) {
+      if (e.status === "canceled" || Date.parse(e.end_time) > agora) continue;
+      const nome = canon(hostDe(e));
+      const k = chaveNome(nome);
+      const cur = mapa.get(k) ?? { nome, concluidas: 0, faltas: 0 };
+      cur.concluidas++;
+      if (emFalta.has(uuidDe(e.uri))) cur.faltas++;
+      mapa.set(k, cur);
+    }
+    return mapa;
+  },
+);

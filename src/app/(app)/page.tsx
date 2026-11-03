@@ -2,10 +2,10 @@ import {
   getLeads,
   resolvePeriod,
   RANGE_KEYS,
+  RANGE_LABEL,
   type Breakdown,
   type Day,
   type Funnel,
-  type RangeKey,
 } from "@/lib/data";
 import {
   Card,
@@ -22,15 +22,6 @@ import {
 } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
-
-const RANGE_LABEL: Record<RangeKey, string> = {
-  hoje: "Hoje",
-  ontem: "Ontem",
-  "7": "7 dias",
-  "30": "30 dias",
-  "90": "90 dias",
-  all: "Tudo",
-};
 
 const MIN_DIAS_GRAFICO = 3; // com 1 ou 2 dias o gráfico não diz nada que os KPIs já não digam
 const N_BAIXO = 20; // abaixo disso a taxa do dia é ruído de amostra

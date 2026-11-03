@@ -111,8 +111,8 @@ export function Card({
 }
 
 /**
- * Chips de janela + intervalo personalizado. As duas páginas filtram por
- * período, mas com chaves diferentes: a Captação olha pra trás (leads que já
+ * Chips de janela + intervalo personalizado. As páginas filtram por
+ * período, mas nem todas com as mesmas chaves (a Vendas usa as da Captação): a Captação olha pra trás (leads que já
  * entraram), a Agenda também olha pra frente (reuniões que vão acontecer).
  * Daí as chaves e a rota virem por prop em vez de fixas.
  */
