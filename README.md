@@ -1,6 +1,6 @@
 # Captação Versalhes — dashboard enxuta
 
-Dashboard Next.js **mínima**, duas páginas, só leitura e auth por senha única.
+Dashboard Next.js **mínima**, três páginas, só leitura e auth por senha única.
 Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-altis).
 
 - **`/` — Captação:** funil de inscrição (quantos iniciaram, terminaram, agendaram call),
@@ -8,6 +8,9 @@ Versão reduzida do [Funis do Altis](https://github.com/rafaelemeth/funis-do-alt
 - **`/agenda` — Agenda:** o que acontece *depois* do agendamento — reuniões do dia,
   qualificação por score (Score 10 e Score 3), no-show (também por score), cancelamentos, por agenda e por anfitrião. Fonte: API do Calendly,
   enriquecida pelo Supabase (inclusive a `lead_no_shows`, que marca as faltas).
+- **`/vendas` — Vendas:** receita e caixa, origem (UTM, funil, score do lead), time comercial
+  (closer × no-show do anfitrião), forma de pagamento e contrato. Fonte: tabela
+  `vendas_versalhes` do Supabase.
 
 A definição de cada indicador — numerador, denominador e o que fica de fora — está no
 [manual do produto](docs/manual-do-produto.md), escrito para quem lê a dash.
@@ -104,13 +107,34 @@ confirmá-lo na documentação pública — o cliente usa teto de concorrência 
   aproximada. Tem RLS sem policy para anon: **exige `SUPABASE_SERVICE_ROLE_KEY` de verdade** —
   com chave `anon` a leitura volta vazia, sem erro, e presença aparece como "—".
 
+## Vendas (página `/vendas`)
+
+Lê `vendas_versalhes` (espelho do board comercial; dados desde 27/10/2026) em `src/lib/vendas.ts`.
+Contas e leitura dos campos: [manual do produto](docs/manual-do-produto.md#vendas--receita-origem-e-time-comercial).
+
+- **PII:** a tabela guarda documento, endereço, nascimento e comprovantes. O `select` lista só
+  as colunas que viram agregado (`COLS` em `vendas.ts`); o e-mail entra em memória, para ligar
+  a venda ao lead, e nunca é renderizado. Não adicione colunas sensíveis ao `COLS`.
+- **RLS sem policy para anon:** exige `SUPABASE_SERVICE_ROLE_KEY` de verdade. Com chave `anon`
+  a tabela volta vazia, sem erro — a página detecta (contagem total = 0) e mostra um card de
+  aviso em vez de zeros.
+- **Venda → lead é só por e-mail** (`getLeadsPorEmail`, em lotes de 100). O telefone exigiria
+  varrer a view inteira (22 mil linhas) e só acrescentaria 2 de 33 vendas.
+- **`VALOR_MIN = 100`:** venda com faturamento abaixo disso conta no total, mas fica fora de
+  receita, ticket e rankings (valor do contrato ainda não preenchido no board).
+- **Closer × no-show:** `getPresencaPorHost` (`agenda.ts`) conta reuniões concluídas e faltas
+  por anfitrião só com a listagem de eventos — sem o fan-out de invitees. Closer e anfitrião
+  são ligados por `chaveNome` (`nomes.ts`): acento, caixa, pontuação e espaço. **Sem
+  similaridade, de propósito** — "Thaise Vianna" e "Thais Santos" são pessoas diferentes.
+- Se o Calendly estiver sem token ou fora do ar, a página segue e o no-show do closer vira `—`.
+
 ## Rodar local
 
 1. `cp .env.example .env.local` e preencha:
    - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — do projeto de leads (nunca `NEXT_PUBLIC_`)
    - `DASHBOARD_PASSWORD` — senha de acesso
    - `AUTH_SECRET` — string aleatória longa (ausente = erro, sem fallback)
-   - `CALENDLY_TOKEN` — Personal Access Token de admin/owner (só a `/agenda` usa)
+   - `CALENDLY_TOKEN` — Personal Access Token de admin/owner (a `/agenda` exige; a `/vendas` usa só para o no-show do closer e segue sem ele)
    - `CALENDLY_ORG_URI` — opcional; vazio = descoberto via `GET /users/me`
 2. `npm install && npm run dev` → http://localhost:3000
 
@@ -128,11 +152,13 @@ src/
     auth.ts       senha única (HMAC), sem fallback inseguro
     data.ts       getLeads(period) → funil + quebras · getLeadsByCalendlyEvent() → a cola
     calendly.ts   client da API v2: paginação, teto de concorrência, TTL por idade
-    agenda.ts     getAgenda() (camada barata) + getPresenca() (o fan-out caro)
+    agenda.ts     getAgenda() (camada barata) + getPresenca() (o fan-out caro) + getPresencaPorHost() (sem fan-out)
+    vendas.ts     getVendas(period) → receita, quebras e closer × no-show
+    nomes.ts      chaveNome()/canonizar(): mesma pessoa, grafia diferente (acento, caixa, espaço)
     theme.ts      paleta de barras
     constants.ts  nome do cookie
   components/
-    ui.tsx        peças usadas pelas duas páginas (Tile, Card, Delta, FiltroPeriodo…)
+    ui.tsx        peças usadas por mais de uma página (Tile, Card, Delta, FiltroPeriodo…)
   middleware.ts   gate por presença de cookie
   app/
     layout.tsx            shell + fontes
@@ -140,6 +166,7 @@ src/
     (app)/layout.tsx      guarda isAuthenticated() + navegação
     (app)/page.tsx        Captação — o funil
     (app)/agenda/page.tsx Agenda — reuniões, presença, cancelamento
+    (app)/vendas/page.tsx Vendas — receita, origem, time comercial, pagamento
 ```
 
 ## Invariantes herdados do Funis
