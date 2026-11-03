@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -31,13 +32,13 @@ export default async function AppLayout({
             ["/agenda", "Agenda"],
             ["/vendas", "Vendas"],
           ].map(([href, nome]) => (
-            <a
+            <Link
               key={href}
               href={href}
               className="rounded-md px-3 py-1.5 text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
             >
               {nome}
-            </a>
+            </Link>
           ))}
         </nav>
         <form action="/api/logout" method="POST">

@@ -41,6 +41,12 @@ a tela depois de um tempo parada pode ver, na primeira vez, números de antes; r
 alguns segundos depois traz o atual. As reuniões do Calendly têm cache próprio — a listagem,
 5 minutos —, então um agendamento muito recente também pode demorar a aparecer.
 
+**Os filtros prontos (7 dias, 30 dias, Este mês…) são carregados de madrugada**, logo depois da
+virada do dia, para a primeira abertura não esperar. Por isso a primeira visita da manhã pode
+mostrar os números lidos de madrugada (o "Atualizado em" diz a hora); recarregar alguns
+segundos depois traz o atual. "Hoje" na Captação e na Vendas e o período personalizado (De/até)
+não são pré-carregados — de madrugada "Hoje" ainda estaria quase zerado.
+
 **Cada tela diz de quando são os números:** "Atualizado em 03/11 às 10:49 (há 2 min)". A hora é
 a do momento em que o dado foi lido, não a de quando você abriu a tela. Quando o dado passou
 do prazo da fonte, a linha acrescenta "recarregue para ver o mais recente". Na Agenda a hora é

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CACHE_S, type Breakdown } from "@/lib/data";
 
 // Peças de apresentação usadas por mais de uma página (Captação e Agenda).
@@ -177,7 +178,7 @@ export function FiltroPeriodo({
         {keys.map((k) => {
           const active = k === activeKey;
           return (
-            <a
+            <Link
               key={k}
               href={`${action}?range=${k}`}
               aria-current={active ? "page" : undefined}
@@ -188,7 +189,7 @@ export function FiltroPeriodo({
               }`}
             >
               {labels[k]}
-            </a>
+            </Link>
           );
         })}
       </nav>
@@ -227,6 +228,34 @@ export function FiltroPeriodo({
           Aplicar
         </button>
       </form>
+    </div>
+  );
+}
+
+// Esqueleto das 3 telas, sem números (informação errada é pior que nenhuma): fallback do
+// Suspense com `key` de cada página, então aparece tanto ao trocar de tela quanto de filtro.
+const bloco = "rounded-xl border bg-[var(--color-surface)] motion-safe:animate-pulse";
+
+export function Esqueleto() {
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-6" aria-busy="true">
+      <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]" role="status">
+        <span
+          aria-hidden
+          className="size-3 motion-safe:animate-spin rounded-full border-2 border-[var(--color-surface-2)] border-t-[var(--color-accent)]"
+        />
+        Carregando…
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={`${bloco} h-24`} />
+        ))}
+      </div>
+      <div className={`${bloco} h-64`} />
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className={`${bloco} h-48`} />
+        <div className={`${bloco} h-48`} />
+      </div>
     </div>
   );
 }

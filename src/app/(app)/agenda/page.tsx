@@ -25,9 +25,13 @@ import {
   niceMax,
   pf,
   taxa,
+  Esqueleto,
 } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+// título por tela: com <Link> a troca é navegação cliente, e o anunciador de rota do Next
+// só avisa o leitor de tela quando o título muda
+export const metadata = { title: "Agenda · Versalhes" };
 
 const MIN_DIAS_GRAFICO = 3; // com 1 ou 2 dias o gráfico não diz nada além dos KPIs
 // Mesma convenção da Captação: abaixo disso a taxa é ruído de amostra, não
@@ -505,6 +509,16 @@ export default async function Page({
   searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
+  // Trocar só o filtro (?range=) mantém a mesma rota: sem `key` o React seguraria a tela
+  // antiga até os dados novos chegarem, em vez de mostrar o esqueleto.
+  return (
+    <Suspense key={`${sp.range}|${sp.from}|${sp.to}`} fallback={<Esqueleto />}>
+      <Conteudo sp={sp} />
+    </Suspense>
+  );
+}
+
+async function Conteudo({ sp }: { sp: { range?: string; from?: string; to?: string } }) {
   const period = resolveAgendaPeriod(sp);
 
   // O header linka "Agenda" pra todo mundo, então a janela entre o deploy e a
