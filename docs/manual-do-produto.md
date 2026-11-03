@@ -31,9 +31,21 @@ marcada para depois de hoje, uma resposta de formulário não pode ter sido envi
 > dia da compra, que pode ser semanas depois da resposta e da reunião (mediana de 6 a 7
 > dias entre o primeiro contato e a compra em 2026-11-03).
 
-As duas usam horário de São Paulo, fixado em UTC−3 no código, sem horário de verão. Ambas
-aceitam intervalo personalizado (campos *De* e *até*), e nos dois casos o dia final entra
+As três usam horário de São Paulo, fixado em UTC−3 no código, sem horário de verão. Todas
+aceitam intervalo personalizado (campos *De* e *até*), e em todas o dia final entra
 inteiro.
+
+**Os números podem estar atrasados.** Leads, vendas e no-shows lidos do banco ficam em cache:
+passados 60 s, a dash mostra o último valor guardado e o atualiza em segundo plano. Quem abre
+a tela depois de um tempo parada pode ver, na primeira vez, números de antes; recarregar
+alguns segundos depois traz o atual. As reuniões do Calendly têm cache próprio — a listagem,
+5 minutos —, então um agendamento muito recente também pode demorar a aparecer.
+
+**Cada tela diz de quando são os números:** "Atualizado em 03/11 às 10:49 (há 2 min)". A hora é
+a do momento em que o dado foi lido, não a de quando você abriu a tela. Quando o dado passou
+do prazo da fonte, a linha acrescenta "recarregue para ver o mais recente". Na Agenda a hora é
+a do dado **mais antigo** que entrou na conta (a listagem do Calendly ou a ligação reunião →
+formulário); o no-show do CRM segue o cache de 60 s, mas não entra nessa hora.
 
 ---
 
@@ -179,8 +191,9 @@ telefone não é usado: varrê-lo custaria 22 mil linhas por visita e, medido, s
 2 das 33 vendas.
 
 **Time comercial.** O closer da venda é ligado ao anfitrião de mesmo nome na Agenda, e a
-tela mostra as reuniões concluídas e o no-show dele **no mesmo período da venda**. Atenção: são
-as reuniões que o closer fez na janela, não necessariamente as que geraram aquelas vendas.
+tela mostra as reuniões concluídas e o no-show dele **do dia da primeira venda da janela até
+agora**. Atenção: são as reuniões que o closer fez nesse intervalo, não necessariamente as que
+geraram aquelas vendas.
 
 **Nomes: só grafia, nunca parecido.** "Thaís Santos", "Thais Santos" e "thais santos" são a
 mesma pessoa — a ligação ignora acento, caixa, pontuação e espaço repetido (`src/lib/nomes.ts`).

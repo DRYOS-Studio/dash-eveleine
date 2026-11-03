@@ -7,6 +7,7 @@ import {
   MODO_FIXTURE,
   resolveAgendaPeriod,
   SEM_LEAD,
+  TTL_LISTAGEM_S,
   type AgendaPeriod,
   type DiaAgenda,
   type QuebraAgenda,
@@ -14,6 +15,7 @@ import {
   type Situacao,
 } from "@/lib/agenda";
 import {
+  Atualizado,
   Card,
   FiltroPeriodo,
   Tile,
@@ -249,7 +251,7 @@ function EsqueletoPresenca() {
   return (
     <Card
       title="Presença"
-      sub="Consultando o Calendly evento a evento (nome do convidado) e cruzando com os no-shows do CRM."
+      sub="Cruzando as reuniões com os no-shows do CRM e buscando no Calendly o nome de quem não veio de formulário."
     >
       <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
         <span
@@ -572,6 +574,7 @@ export default async function Page({
             : `${fmtDate(period.fromDate)} a ${fmtDate(period.toDate)}`}{" "}
           · por horário da reunião, fuso de São Paulo
         </p>
+        <Atualizado geradoEm={a.geradoEm} validoS={TTL_LISTAGEM_S} />
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -667,7 +670,7 @@ export default async function Page({
             fallback={
               <Card title="Reuniões do período" sub="Carregando…">
                 <p className="text-sm text-[var(--color-muted)]">
-                  Buscando os convidados de cada reunião.
+                  Buscando os nomes de quem não veio de formulário.
                 </p>
               </Card>
             }
