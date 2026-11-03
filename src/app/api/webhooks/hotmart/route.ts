@@ -265,6 +265,7 @@ export async function POST(req: NextRequest) {
         .from("transactions")
         .select("approved_at, product_id")
         .eq("customer_email", buyerEmail)
+        .eq("plataforma", "hotmart") // compras da Eduzz não contam para a recompra da Hotmart
         .eq("status", "APPROVED")
         .neq("transaction_code", transactionCode)
         .order("approved_at", { ascending: false });
@@ -336,6 +337,7 @@ export async function POST(req: NextRequest) {
       .from("transactions")
       .select("bruto, liquido")
       .eq("customer_email", buyerEmail)
+      .eq("plataforma", "hotmart")
       .eq("status", "APPROVED");
     const totalPurchases = custTx?.length ?? 0;
     const totalBruto = (custTx ?? []).reduce((acc, t) => acc + (Number(t.bruto) || 0), 0);

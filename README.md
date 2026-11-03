@@ -22,6 +22,7 @@ Dashboard de vendas da Hotmart. Quatro telas, só leitura, acesso por senha úni
    `scripts/recalc-customer-history.js` recalcula recompra e acumulados do cliente;
    `scripts/backfill-hotmart-fees.js` preenche taxa exata e comissões pela API da Hotmart;
    `scripts/backfill-foreign-sales.js` converte vendas em moeda estrangeira para reais (precisa do CSV de vendas).
+   `scripts/import-eduzz-sales.js` importa o relatório de vendas da Eduzz (`plataforma = eduzz`; só guarda, o dash segue lendo Hotmart).
 2. **Tempo real:** a Hotmart chama `POST /api/webhooks/hotmart` (header `X-HOTMART-HOTTOK`).
    Cada evento é gravado em `webhook_events`; vendas aprovadas viram linhas em `transactions`.
 3. **Leitura:** as telas leem `transactions` (apenas `status = APPROVED`) e `products`

@@ -35,6 +35,7 @@ async function fetchDb() {
     const { data, error } = await supabase
       .from("transactions")
       .select("transaction_code, status, bruto, liquido, moeda, preco_oferta, taxa_hotmart_exata, outras_comissoes, fonte_taxa")
+      .eq("plataforma", "hotmart") // vendas da Eduzz não existem na API da Hotmart
       .order("transaction_code")
       .range(i, i + 999);
     if (error) throw error;

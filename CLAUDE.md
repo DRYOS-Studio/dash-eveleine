@@ -10,11 +10,13 @@
 
 ## Fatos do banco (verificados em 2026-10-09)
 
-- Todos os `transaction_code` começam com `HP`; o prefixo não identifica boleto/parcela.
+- `transactions.plataforma` = `hotmart` | `eduzz`. Hotmart: `transaction_code` começa com `HP`; o prefixo não identifica boleto/parcela.
+  Eduzz (base histórica de ex-alunas, `scripts/import-eduzz-sales.js`): `EDZ<fatura>`, `product_id = eduzz-<id>`, `fonte_taxa = eduzz_csv`, sem `taxa_hotmart_exata`/`outras_comissoes`; cada linha é a venda inteira (parcelas do cartão não viram linhas).
+  Dash, webhook, `recalc-customer-history.js` e os backfills leem só `plataforma = 'hotmart'`: Eduzz está guardada no banco e não entra em número nenhum, nem na recompra. Unificar é decisão pendente (ver `docs/pendencias.md`).
 - `transactions.status` é `APPROVED`, exceto vendas que a API mostrou como reembolsadas/contestadas (o backfill reconcilia). O dash lê só `APPROVED`.
 - `payment_type` é misto: import grava `Pix`/`Cartão de Crédito`, webhook grava `PIX`/`CREDIT_CARD`.
   A tela normaliza em `normalizePaymentMethod`.
-- `utm_*` estão vazios em 100% das vendas.
+- `utm_*` estão vazios em 100% das vendas da Hotmart (as da Eduzz trazem UTM do relatório).
 - `installments` do Parcelado Hotmart é o tamanho do plano (constante por comprador+produto); cada linha é uma parcela.
 - Webhook só traz compra aprovada. Sem comissão PRODUCER o webhook rejeita (422): não existe líquido estimado.
 

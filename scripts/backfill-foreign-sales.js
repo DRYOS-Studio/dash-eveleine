@@ -64,6 +64,7 @@ async function main() {
   const { data: db, error } = await supabase
     .from("transactions")
     .select("transaction_code, moeda, status, fonte_taxa")
+    .eq("plataforma", "hotmart") // vendas da Eduzz não estão no CSV da Hotmart
     .neq("moeda", "BRL")
     .eq("status", "APPROVED");
   if (error) throw error;

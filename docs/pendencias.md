@@ -29,3 +29,16 @@ contestação), mas só quando é rodado.
    com status e valores, para o `/financeiro` poder mostrá-las.
 4. Definir o card no `/financeiro`: quantidade e valor perdido por tipo, e taxa de reembolso sobre as vendas
    do período. Decidir se o faturamento exibido passa a descontar essas vendas ou se elas ficam em linha à parte.
+
+## Vendas da Eduzz: entram ou não nos números do dash
+
+**Estado hoje:** 279 vendas da Eduzz (Empreenda com Tábuas, out/2023 a ago/2025) estão em `transactions` com `plataforma = 'eduzz'`
+(`scripts/import-eduzz-sales.js`). Dash, webhook, recálculo de recompra e backfills leem só `plataforma = 'hotmart'`: nenhum número
+publicado inclui a Eduzz.
+
+**Para decidir (se unificar):**
+1. Recompra e cohorte entre plataformas: a Eduzz tem 3 `product_id` para o mesmo curso, então a regra "outro produto" marcaria a renovação como recompra.
+2. `/financeiro`: a Eduzz não decompõe a taxa (só `Ganho Liquido`, já com a co-produção descontada); precisa de regra própria.
+3. Vendas estrangeiras da Eduzz: os valores parecem estar em reais (o mesmo `Ganho Liquido` se repete em EUR/USD/CHF/PEN para a mesma oferta); confirmar.
+4. Trocar o filtro `PLATAFORMA` em `src/lib/sales-data.ts`, os 2 filtros do webhook e o do `recalc-customer-history.js`; rodar o recálculo.
+

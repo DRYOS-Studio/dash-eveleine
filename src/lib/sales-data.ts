@@ -328,6 +328,10 @@ const TX_COLUMNS = `
 // valor recebido em reais). Estrangeiras ainda sem conversão ficam de fora: valor nominal não é BRL.
 const ONLY_BRL = "moeda.is.null,moeda.eq.BRL,fonte_taxa.eq.api_fx";
 
+// O dash lê só vendas da Hotmart. Vendas da Eduzz (transactions.plataforma = eduzz) ficam guardadas no banco,
+// sem entrar em faturamento, recompra nem cohorte, até decidirmos unificar (docs/migrations/2026-11-03-plataforma.sql).
+const PLATAFORMA = "hotmart";
+
 export type TxRow = Record<string, any>;
 
 /**
@@ -352,6 +356,7 @@ export async function fetchTransactionsData(from: string | null, to: string) {
   let countQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })
+    .eq("plataforma", PLATAFORMA)
     .eq("status", "APPROVED")
     .or(ONLY_BRL)
     .lte("approved_at", to);
@@ -359,6 +364,7 @@ export async function fetchTransactionsData(from: string | null, to: string) {
   let foreignQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })
+    .eq("plataforma", PLATAFORMA)
     .eq("status", "APPROVED")
     .neq("moeda", "BRL")
     .or("fonte_taxa.is.null,fonte_taxa.neq.api_fx")
@@ -367,6 +373,7 @@ export async function fetchTransactionsData(from: string | null, to: string) {
   let convertedQuery = supabaseAdmin
     .from("transactions")
     .select("transaction_code", { count: "exact", head: true })
+    .eq("plataforma", PLATAFORMA)
     .eq("status", "APPROVED")
     .neq("moeda", "BRL")
     .eq("fonte_taxa", "api_fx")
@@ -409,6 +416,7 @@ export async function fetchTransactionsData(from: string | null, to: string) {
     let q = supabaseAdmin
       .from("transactions")
       .select(TX_COLUMNS)
+      .eq("plataforma", PLATAFORMA)
       .eq("status", "APPROVED")
       .or(ONLY_BRL)
       .lte("approved_at", to)
@@ -624,6 +632,7 @@ export async function getProductSalesDetail(
   let query = supabaseAdmin
     .from("transactions")
     .select(TX_COLUMNS, { count: "exact" })
+    .eq("plataforma", PLATAFORMA)
     .eq("status", "APPROVED")
     .or(ONLY_BRL)
     .in("product_id", productIds)

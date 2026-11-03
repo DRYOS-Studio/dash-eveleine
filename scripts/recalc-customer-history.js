@@ -67,7 +67,7 @@ async function run() {
 
   const tx = await fetchAll(
     "transactions",
-    "transaction_code, status, customer_email, customer_name, product_id, product_name, approved_at, bruto, liquido, purchase_sequence, is_recompra, days_since_first_purchase, days_since_prev_purchase",
+    "transaction_code, plataforma, status, customer_email, customer_name, product_id, product_name, approved_at, bruto, liquido, purchase_sequence, is_recompra, days_since_first_purchase, days_since_prev_purchase",
     ["approved_at", "transaction_code"],
   );
   const customers = await fetchAll(
@@ -78,7 +78,8 @@ async function run() {
   const products = await fetchAll("products", "id, name, family", ["id"]);
   console.log(`transactions: ${tx.length} · customers: ${customers.length} · products: ${products.length}`);
 
-  const approved = tx.filter((t) => t.status === "APPROVED");
+  // Só Hotmart: vendas da Eduzz (plataforma = eduzz) não entram na recompra nem nos totais do cliente.
+  const approved = tx.filter((t) => t.status === "APPROVED" && t.plataforma === "hotmart");
   const byCust = new Map();
   for (const t of approved) {
     if (!byCust.has(t.customer_email)) byCust.set(t.customer_email, []);
