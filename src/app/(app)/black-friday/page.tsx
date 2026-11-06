@@ -76,12 +76,57 @@ export default async function BlackFridayPage(props: PageProps) {
         </div>
       </div>
 
-      {/* Grid de KPIs principais */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 sm:gap-4">
-        <Tile label="Faturamento (Oferta)" valor={cf(synthesis.faturamentoOferta)} hero>
-          <span>Líquido: <strong className="text-[var(--color-oak)]">{cf(synthesis.faturamentoLiquido)}</strong> ({pf(pctMargem)})</span>
-        </Tile>
+      {/* 1. Destaques Financeiros Principais (Faturamento da Oferta & Líquido) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col justify-between rounded-xl border border-[var(--color-line-strong)] bg-white p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs uppercase tracking-wider text-[var(--color-mute)]">
+              Faturamento da Oferta
+            </span>
+            <span className="font-mono text-xs text-[var(--color-mute)]">
+              {nf(synthesis.totalVendas)} vendas aprovadas
+            </span>
+          </div>
 
+          <div className="my-2.5">
+            <span className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[var(--color-ink)]">
+              {cf(synthesis.faturamentoOferta)}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-mute)] border-t border-[var(--color-line)] pt-3 mt-1">
+            <span>Ticket médio: <strong className="text-[var(--color-ink)] font-mono">{cf(synthesis.ticketMedioOferta)}</strong></span>
+            <span>·</span>
+            <span>Hoje: <strong className="text-[var(--color-oak)] font-mono">{cf(synthesis.faturamentoHoje)}</strong> ({synthesis.vendasHoje} vendas)</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-xl border border-[var(--color-oak)]/30 bg-[var(--color-oak-tint)]/30 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs uppercase tracking-wider text-[var(--color-oak)] font-semibold">
+              Faturamento Líquido (Recebido)
+            </span>
+            <span className="rounded-full bg-[var(--color-oak)]/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-[var(--color-oak)]">
+              {pf(pctMargem)} margem
+            </span>
+          </div>
+
+          <div className="my-2.5">
+            <span className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[var(--color-oak)]">
+              {cf(synthesis.faturamentoLiquido)}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-mute)] border-t border-[var(--color-oak)]/15 pt-3 mt-1">
+            <span>Taxas Hotmart: <strong className="text-[var(--color-clay)] font-mono">{cf(synthesis.taxaHotmartTotal)}</strong> ({pf(pctTaxa)})</span>
+            <span>·</span>
+            <span>Ticket liq.: <strong className="text-[var(--color-ink)] font-mono">{cf(synthesis.ticketMedioLiquido)}</strong></span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Grid de Métricas Secundárias */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <Tile label="Vendas Totais" valor={nf(synthesis.totalVendas)}>
           <span>
             {nf(synthesis.clientesUnicos)} clientes ({pf(synthesis.taxaRecompra)} recompra)
@@ -90,21 +135,17 @@ export default async function BlackFridayPage(props: PageProps) {
 
         <Tile label="Vendas Hoje" valor={nf(synthesis.vendasHoje)}>
           <span className="text-[var(--color-oak)] font-medium">
-            {cf(synthesis.faturamentoHoje)} (oferta)
+            {cf(synthesis.faturamentoHoje, true)} na oferta
           </span>
         </Tile>
 
-        <Tile label="Ticket Médio" valor={cf(synthesis.ticketMedioOferta)}>
-          <span>Líquido: {cf(synthesis.ticketMedioLiquido)}</span>
+        <Tile label="Ticket Médio" valor={cf(synthesis.ticketMedioOferta, true)}>
+          <span>Líquido: {cf(synthesis.ticketMedioLiquido, true)}</span>
         </Tile>
 
-        <Tile label="Taxas Hotmart" valor={cf(synthesis.taxaHotmartTotal)}>
-          <span>{pf(pctTaxa)} do faturamento da oferta</span>
-        </Tile>
-
-        <Tile label="Total Pago c/ Juros" valor={cf(synthesis.valorBrutoPago)}>
+        <Tile label="Total Pago c/ Juros" valor={cf(synthesis.valorBrutoPago, true)}>
           <span className="text-[11px] text-[var(--color-mute-soft)]">
-            + {cf(synthesis.valorBrutoPago - synthesis.faturamentoOferta)} juros ao cliente
+            + {cf(synthesis.valorBrutoPago - synthesis.faturamentoOferta, true)} juros Hotmart
           </span>
         </Tile>
       </div>
