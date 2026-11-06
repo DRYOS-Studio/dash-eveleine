@@ -45,6 +45,12 @@ const CANAIS: Record<string, string> = {
   direct: "Direto",
   hotmart_product_page: "Página do produto (Hotmart)",
   hotmart_sales_agent: "Agente de vendas (Hotmart)",
+  grp_formacao: "Grupos Formação",
+  grp_bf: "Grupos Black Friday",
+  grp_opps: "Grupos Oportunidades",
+  grp_alunas: "Grupos Alunas",
+  "ex-alunas": "Ex-Alunas (1x1)",
+  ig: "Instagram",
 };
 
 function canalDe(origem: string): string {
@@ -100,7 +106,7 @@ export function parseSck(raw: string | null | undefined): ParsedSck {
     }
   } else if (n >= 5) {
     // origem|mídia|campanha|conteúdo|termo
-    campos.campanha = limpo(p[2]);
+    campos.campanha = limpo(p[2]) ?? limpo(p[1]);
     campos.anuncio = limpo(p[3]);
   }
 

@@ -71,6 +71,21 @@ test("trafego e formato utm (5 partes)", () => {
   assert.deepEqual([g.canal, g.campanha], ["grp-new", null]);
 });
 
+test("grupos e black friday (formato 5 partes com mídia/mensagem)", () => {
+  const gf = parseSck("grp_formacao|msg1|||");
+  assert.equal(gf.canal, "Grupos Formação");
+  assert.equal(gf.campanha, "msg1");
+
+  const gbf = parseSck("grp_bf|msg3|||");
+  assert.equal(gbf.canal, "Grupos Black Friday");
+  assert.equal(gbf.campanha, "msg3");
+
+  const ea = parseSck("ex-alunas|1x1||msg1|");
+  assert.equal(ea.canal, "Ex-Alunas (1x1)");
+  assert.equal(ea.campanha, "1x1");
+  assert.equal(ea.anuncio, "msg1");
+});
+
 test("só nome de campanha, sem origem", () => {
   const r = parseSck("PARTIU EMPREENDER | VENDAS | WORKSHOP PAIS | A");
   assert.equal(r.canal, "Só nome de campanha");
