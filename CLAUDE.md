@@ -18,6 +18,12 @@
   A tela normaliza em `normalizePaymentMethod`.
 - `utm_*` estão vazios em 100% das vendas da Hotmart (as da Eduzz trazem UTM do relatório).
 - `installments` do Parcelado Hotmart é o tamanho do plano (constante por comprador+produto); cada linha é uma parcela.
+- **Parcelado Hotmart e Isolamento de Parcelas**:
+  - Cada cobrança mensal do Parcelado Hotmart chega como uma transação individual no banco (geralmente R$ 98 a R$ 152).
+  - No cálculo analítico (`sales-data.ts`), a 1ª parcela identifica a decisão de compra / adesão ao plano. As parcelas subsequentes (mês 2 a 12) são identificadas como quitação de plano ativo (`is_subsequent_installment = true`).
+  - O Faturamento Total e Líquido recebe 100% da receita de todas as parcelas ao centavo (preservação contábil total).
+  - Para não deprimir o Ticket Médio/Mediana nem contaminar o Cenário A (Compra Única) com centenas de falsas "novas compras avulsas" de R$ 98, o volume de transações nos cenários reflete contratos reais (`vendasContratadas`).
+  - As receitas de parcelas subsequentes somam no faturamento do cenário de origem do plano (Compra Única ou Recompra), garantindo a identidade contábil `cenarioUnica.receitaBruta + cenarioRecompra.receitaBruta === synthesis.faturamentoBruto`.
 - Webhook só traz compra aprovada. Sem comissão PRODUCER o webhook rejeita (422): não existe líquido estimado.
 
 ## Taxas (fonte: API/webhook da Hotmart)

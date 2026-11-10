@@ -25,6 +25,8 @@ export type SaleRecord = {
   outras_comissoes: number;
   /** false = venda ainda sem decomposição exata de taxa (bruto = valor pago, taxa = 0). */
   decomposta: boolean;
+  /** true = parcela 2 em diante de um plano de Parcelado Hotmart */
+  is_subsequent_installment?: boolean;
 };
 
 export type SynthesisMetrics = {
@@ -38,8 +40,13 @@ export type SynthesisMetrics = {
   taxaRecompra: number;
   ticketMedioBruto: number;
   ticketMedianoBruto: number;
+  ticketMedioIntegral?: number;
   ltvMedioBruto: number;
   outrasComissoes: number;
+  vendasContratadas: number;
+  parcelasSubsequentes: number;
+  receitaParcelasSubsequentes: number;
+  ticketMedioParcela: number;
 };
 
 export type ScenarioMetrics = {
@@ -49,6 +56,8 @@ export type ScenarioMetrics = {
   receitaLiquida: number;
   ticketMedio: number;
   ticketMediano: number;
+  parcelasSubsequentes: number;
+  receitaParcelasSubsequentes: number;
 };
 
 export type FamilyMetric = {
@@ -98,6 +107,9 @@ export type FinancialSynthesisMetrics = {
   clientesUnicos: number;
   ticketMedioBruto: number;
   ticketMedioLiquido: number;
+  vendasContratadas: number;
+  parcelasSubsequentes: number;
+  receitaParcelasSubsequentes: number;
 };
 
 export type FinancialPaymentMethod = {
@@ -154,6 +166,7 @@ export type FinancialTransactionItem = {
   taxa_hotmart: number;
   outras_comissoes: number;
   is_recompra: boolean;
+  is_subsequent_installment?: boolean;
 };
 
 export type TaxaFaixa = {
@@ -351,6 +364,61 @@ export function money(r: TxRow) {
   };
 }
 
+export type SubsequentInstallmentInfo = {
+  isSubsequent: boolean;
+  isRecompraOrigin: boolean;
+};
+
+let cachedSubsequentInstallments: Map<string, SubsequentInstallmentInfo> | null = null;
+let cachedSubsequentAt = 0;
+const SUBSEQUENT_CACHE_TTL_MS = 60_000;
+
+/**
+ * Identifica com precisão histórica quais transações do Parcelado Hotmart são a 1ª parcela (adesão)
+ * e quais são parcelas subsequentes (mês 2 a 12 de plano ativo).
+ */
+export async function getSubsequentInstallmentMap(): Promise<Map<string, SubsequentInstallmentInfo>> {
+  const now = Date.now();
+  if (cachedSubsequentInstallments && now - cachedSubsequentAt < SUBSEQUENT_CACHE_TTL_MS) {
+    return cachedSubsequentInstallments;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("transactions")
+    .select("transaction_code, customer_email, product_id, product_name, approved_at, is_recompra")
+    .eq("plataforma", PLATAFORMA)
+    .eq("status", "APPROVED")
+    .or("payment_type.ilike.%parcelado%,payment_type.ilike.%installments%")
+    .order("approved_at", { ascending: true })
+    .order("transaction_code", { ascending: true });
+
+  if (error) {
+    console.error("[sales-data] Erro ao carregar parcelado para mapa de subsequentes:", error);
+    return cachedSubsequentInstallments || new Map();
+  }
+
+  const map = new Map<string, SubsequentInstallmentInfo>();
+  const planFirst = new Map<string, { is_recompra: boolean }>();
+
+  for (const r of data || []) {
+    const email = (r.customer_email || "").toLowerCase().trim();
+    const prodKey = String(r.product_id || r.product_name);
+    const key = `${email}|${prodKey}`;
+
+    if (!planFirst.has(key)) {
+      planFirst.set(key, { is_recompra: Boolean(r.is_recompra) });
+      map.set(r.transaction_code, { isSubsequent: false, isRecompraOrigin: Boolean(r.is_recompra) });
+    } else {
+      const first = planFirst.get(key)!;
+      map.set(r.transaction_code, { isSubsequent: true, isRecompraOrigin: first.is_recompra });
+    }
+  }
+
+  cachedSubsequentInstallments = map;
+  cachedSubsequentAt = now;
+  return map;
+}
+
 /** Carrega transações e metadados de produtos em paralelo com alta eficiência. */
 export async function fetchTransactionsData(from: string | null, to: string) {
   let countQuery = supabaseAdmin
@@ -448,23 +516,30 @@ export async function getDashboardData(
   customTo?: string | null,
 ): Promise<DashboardData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
-  const { rawRows, productFamilyMap, foreignCount, convertidasCount } = await fetchTransactionsData(from, to);
+  const [subsequentMap, { rawRows, productFamilyMap, foreignCount, convertidasCount }] = await Promise.all([
+    getSubsequentInstallmentMap(),
+    fetchTransactionsData(from, to),
+  ]);
 
-  const rows: SaleRecord[] = rawRows.map((r: any) => ({
-    transaction_code: r.transaction_code,
-    product_id: r.product_id,
-    product_name: r.product_name,
-    family: productFamilyMap.get(r.product_id) || r.product_name,
-    customer_email: r.customer_email,
-    customer_name: r.customer_name,
-    status: r.status,
-    approved_at: r.approved_at,
-    ...money(r),
-    payment_type: normalizePaymentMethod(r.payment_type),
-    installments: Number(r.installments) || 1,
-    purchase_sequence: Number(r.purchase_sequence) || 1,
-    is_recompra: Boolean(r.is_recompra),
-  }));
+  const rows: SaleRecord[] = rawRows.map((r: any) => {
+    const subInfo = subsequentMap.get(r.transaction_code);
+    return {
+      transaction_code: r.transaction_code,
+      product_id: r.product_id,
+      product_name: r.product_name,
+      family: productFamilyMap.get(r.product_id) || r.product_name,
+      customer_email: r.customer_email,
+      customer_name: r.customer_name,
+      status: r.status,
+      approved_at: r.approved_at,
+      ...money(r),
+      payment_type: normalizePaymentMethod(r.payment_type),
+      installments: Number(r.installments) || 1,
+      purchase_sequence: Number(r.purchase_sequence) || 1,
+      is_recompra: Boolean(r.is_recompra),
+      is_subsequent_installment: subInfo?.isSubsequent ?? false,
+    };
+  });
 
   // 1. Agregação de Síntese
   let totalBruto = 0;
@@ -474,16 +549,25 @@ export async function getDashboardData(
   let semDecomposicao = 0;
   const customersSet = new Set<string>();
   const recompradoresSet = new Set<string>();
-  const brutosList: number[] = [];
+
+  // Contratos / novas adesões vs parcelas subsequentes
+  const contratosBrutos: number[] = [];
+  const integraisBrutos: number[] = [];
+  let parcelasSubseqCount = 0;
+  let parcelasSubseqBruto = 0;
 
   // Cenários
-  const unicas: number[] = [];
+  const unicasContratos: number[] = [];
   let unicasBruto = 0;
   let unicasLiquido = 0;
+  let unicasSubseqCount = 0;
+  let unicasSubseqBruto = 0;
 
-  const recompras: number[] = [];
+  const recomprasContratos: number[] = [];
   let recomprasBruto = 0;
   let recomprasLiquido = 0;
+  let recomprasSubseqCount = 0;
+  let recomprasSubseqBruto = 0;
 
   // Famílias
   const familyMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
@@ -498,17 +582,42 @@ export async function getDashboardData(
     totalOutras += row.outras_comissoes;
     if (!row.decomposta) semDecomposicao++;
     customersSet.add(row.customer_email);
-    brutosList.push(row.bruto);
 
-    if (row.is_recompra) {
-      recompradoresSet.add(row.customer_email);
-      recompras.push(row.bruto);
-      recomprasBruto += row.bruto;
-      recomprasLiquido += row.liquido;
+    const subInfo = subsequentMap.get(row.transaction_code);
+    const isSub = row.is_subsequent_installment ?? false;
+
+    if (isSub) {
+      parcelasSubseqCount++;
+      parcelasSubseqBruto += row.bruto;
+
+      // Atribui a receita ao cenário de origem da aluna no plano
+      if (subInfo?.isRecompraOrigin) {
+        recomprasBruto += row.bruto;
+        recomprasLiquido += row.liquido;
+        recomprasSubseqCount++;
+        recomprasSubseqBruto += row.bruto;
+      } else {
+        unicasBruto += row.bruto;
+        unicasLiquido += row.liquido;
+        unicasSubseqCount++;
+        unicasSubseqBruto += row.bruto;
+      }
     } else {
-      unicas.push(row.bruto);
-      unicasBruto += row.bruto;
-      unicasLiquido += row.liquido;
+      contratosBrutos.push(row.bruto);
+      if (row.payment_type !== "Parcelado Hotmart") {
+        integraisBrutos.push(row.bruto);
+      }
+
+      if (row.is_recompra) {
+        recompradoresSet.add(row.customer_email);
+        recomprasContratos.push(row.bruto);
+        recomprasBruto += row.bruto;
+        recomprasLiquido += row.liquido;
+      } else {
+        unicasContratos.push(row.bruto);
+        unicasBruto += row.bruto;
+        unicasLiquido += row.liquido;
+      }
     }
 
     // Família
@@ -531,8 +640,16 @@ export async function getDashboardData(
   }
 
   const totalTransacoes = rows.length;
+  const vendasContratadas = contratosBrutos.length;
   const clientesUnicos = customersSet.size;
   const recompradores = recompradoresSet.size;
+
+  const ticketMedioParcela =
+    parcelasSubseqCount > 0 ? parcelasSubseqBruto / parcelasSubseqCount : 0;
+  const ticketMedioIntegral =
+    integraisBrutos.length > 0
+      ? integraisBrutos.reduce((s, x) => s + x, 0) / integraisBrutos.length
+      : 0;
 
   const synthesis: SynthesisMetrics = {
     faturamentoBruto: totalBruto,
@@ -543,28 +660,50 @@ export async function getDashboardData(
     clientesUnicos,
     recompradores,
     taxaRecompra: clientesUnicos > 0 ? (recompradores / clientesUnicos) * 100 : 0,
-    ticketMedioBruto: totalTransacoes > 0 ? totalBruto / totalTransacoes : 0,
-    ticketMedianoBruto: median(brutosList),
+    // Ticket médio dos contratos / compras de novas alunas no período
+    ticketMedioBruto:
+      vendasContratadas > 0
+        ? contratosBrutos.reduce((s, x) => s + x, 0) / vendasContratadas
+        : totalTransacoes > 0
+          ? totalBruto / totalTransacoes
+          : 0,
+    ticketMedianoBruto:
+      vendasContratadas > 0 ? median(contratosBrutos) : median(rows.map((r) => r.bruto)),
+    ticketMedioIntegral,
     ltvMedioBruto: clientesUnicos > 0 ? totalBruto / clientesUnicos : 0,
     outrasComissoes: totalOutras,
+    vendasContratadas,
+    parcelasSubsequentes: parcelasSubseqCount,
+    receitaParcelasSubsequentes: parcelasSubseqBruto,
+    ticketMedioParcela,
   };
 
   const cenarioUnica: ScenarioMetrics = {
-    transacoes: unicas.length,
-    pctVolume: totalTransacoes > 0 ? (unicas.length / totalTransacoes) * 100 : 0,
+    transacoes: unicasContratos.length,
+    pctVolume: vendasContratadas > 0 ? (unicasContratos.length / vendasContratadas) * 100 : 0,
     receitaBruta: unicasBruto,
     receitaLiquida: unicasLiquido,
-    ticketMedio: unicas.length > 0 ? unicasBruto / unicas.length : 0,
-    ticketMediano: median(unicas),
+    ticketMedio:
+      unicasContratos.length > 0
+        ? unicasContratos.reduce((s, x) => s + x, 0) / unicasContratos.length
+        : 0,
+    ticketMediano: median(unicasContratos),
+    parcelasSubsequentes: unicasSubseqCount,
+    receitaParcelasSubsequentes: unicasSubseqBruto,
   };
 
   const cenarioRecompra: ScenarioMetrics = {
-    transacoes: recompras.length,
-    pctVolume: totalTransacoes > 0 ? (recompras.length / totalTransacoes) * 100 : 0,
+    transacoes: recomprasContratos.length,
+    pctVolume: vendasContratadas > 0 ? (recomprasContratos.length / vendasContratadas) * 100 : 0,
     receitaBruta: recomprasBruto,
     receitaLiquida: recomprasLiquido,
-    ticketMedio: recompras.length > 0 ? recomprasBruto / recompras.length : 0,
-    ticketMediano: median(recompras),
+    ticketMedio:
+      recomprasContratos.length > 0
+        ? recomprasContratos.reduce((s, x) => s + x, 0) / recomprasContratos.length
+        : 0,
+    ticketMediano: median(recomprasContratos),
+    parcelasSubsequentes: recomprasSubseqCount,
+    receitaParcelasSubsequentes: recomprasSubseqBruto,
   };
 
   const shareLiquidoRecompra =
@@ -639,7 +778,10 @@ export async function getProductSalesDetail(
     .lte("approved_at", to);
   if (from) query = query.gte("approved_at", from);
 
-  const { data, error, count } = await query.order("approved_at", { ascending: false }).limit(limit);
+  const [subsequentMap, { data, error, count }] = await Promise.all([
+    getSubsequentInstallmentMap(),
+    query.order("approved_at", { ascending: false }).limit(limit),
+  ]);
   if (error) throw error;
 
   const sales: SaleRecord[] = (data || []).map((r: any) => ({
@@ -656,6 +798,7 @@ export async function getProductSalesDetail(
     installments: Number(r.installments) || 1,
     purchase_sequence: Number(r.purchase_sequence) || 1,
     is_recompra: Boolean(r.is_recompra),
+    is_subsequent_installment: subsequentMap.get(r.transaction_code)?.isSubsequent ?? false,
   }));
   return { sales, total: count ?? sales.length };
 }
@@ -700,7 +843,10 @@ export async function getFinancialData(
 ): Promise<FinancialData> {
   const { from, to } = resolveDateRange(range, customFrom, customTo);
 
-  const { rawRows, productFamilyMap, foreignCount, convertidasCount } = await fetchTransactionsData(from, to);
+  const [subsequentMap, { rawRows, productFamilyMap, foreignCount, convertidasCount }] = await Promise.all([
+    getSubsequentInstallmentMap(),
+    fetchTransactionsData(from, to),
+  ]);
 
   let totalBruto = 0;
   let totalLiquido = 0;
@@ -708,6 +854,10 @@ export async function getFinancialData(
   let totalOutras = 0;
   let semDecomposicao = 0;
   const customersSet = new Set<string>();
+
+  let vendasContratadasCount = 0;
+  let parcelasSubseqCount = 0;
+  let parcelasSubseqBruto = 0;
 
   const payMap = new Map<string, { transacoes: number; bruto: number; liquido: number; taxa: number; outras: number }>();
   const cardMap = new Map<number, { transacoes: number; bruto: number; liquido: number; taxa: number }>();
@@ -737,6 +887,15 @@ export async function getFinancialData(
     totalOutras += outras;
     if (!m.decomposta) semDecomposicao++;
     customersSet.add(r.customer_email);
+
+    const subInfo = subsequentMap.get(r.transaction_code);
+    const isSub = subInfo?.isSubsequent ?? false;
+    if (isSub) {
+      parcelasSubseqCount++;
+      parcelasSubseqBruto += bruto;
+    } else {
+      vendasContratadasCount++;
+    }
 
     // Meios de pagamento
     const pData = payMap.get(normPay) || { transacoes: 0, bruto: 0, liquido: 0, taxa: 0, outras: 0 };
@@ -831,6 +990,7 @@ export async function getFinancialData(
         taxa_hotmart: taxa,
         outras_comissoes: outras,
         is_recompra: Boolean(r.is_recompra),
+        is_subsequent_installment: isSub,
       });
     }
   }
@@ -849,6 +1009,9 @@ export async function getFinancialData(
     clientesUnicos,
     ticketMedioBruto: totalTransacoes > 0 ? totalBruto / totalTransacoes : 0,
     ticketMedioLiquido: totalTransacoes > 0 ? totalLiquido / totalTransacoes : 0,
+    vendasContratadas: vendasContratadasCount,
+    parcelasSubsequentes: parcelasSubseqCount,
+    receitaParcelasSubsequentes: parcelasSubseqBruto,
   };
 
   const paymentMethods: FinancialPaymentMethod[] = [...payMap.entries()]

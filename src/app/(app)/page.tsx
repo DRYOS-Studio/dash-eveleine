@@ -91,7 +91,13 @@ export default async function SalesDashboardPage(props: PageProps) {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Tile label="Faturamento (oferta)" valor={cf(synthesis.faturamentoBruto, true)}>
             <span className="text-xs text-[var(--color-mute)]">
-              {nf(synthesis.totalTransacoes)} vendas aprovadas
+              {synthesis.parcelasSubsequentes > 0 ? (
+                <>
+                  {nf(synthesis.vendasContratadas)} compras · {nf(synthesis.parcelasSubsequentes)} parcelas
+                </>
+              ) : (
+                <>{nf(synthesis.totalTransacoes)} vendas aprovadas</>
+              )}
             </span>
           </Tile>
 
@@ -108,8 +114,18 @@ export default async function SalesDashboardPage(props: PageProps) {
           </Tile>
 
           <Tile label="Ticket Médio" valor={cf(synthesis.ticketMedioBruto)}>
-            <span className="text-xs text-[var(--color-mute)]">
+            <span
+              className="text-xs text-[var(--color-mute)]"
+              title={
+                synthesis.parcelasSubsequentes > 0
+                  ? `Mediana: ${cf(synthesis.ticketMedianoBruto)} · Parcela média (boleto): ${cf(synthesis.ticketMedioParcela)}`
+                  : `Mediana: ${cf(synthesis.ticketMedianoBruto)}`
+              }
+            >
               Mediana: {cf(synthesis.ticketMedianoBruto)}
+              {synthesis.parcelasSubsequentes > 0 ? (
+                <> · Parcela: {cf(synthesis.ticketMedioParcela)}</>
+              ) : null}
             </span>
           </Tile>
 
@@ -157,15 +173,22 @@ export default async function SalesDashboardPage(props: PageProps) {
               </div>
               <h3 className="mt-3 font-heading text-2xl font-bold text-[var(--color-ink)]">Vendas sem recompra</h3>
               <p className="mt-1 text-xs text-[var(--color-mute)]">
-                Primeira compra do cliente, compras simultâneas e repetições do mesmo produto.
+                Primeira compra de alunas e novos contratos. Parcelas de planos ativos somam no faturamento sem inflar novos clientes.
               </p>
 
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-mute)] truncate block">Transações</span>
                   <p className="text-base sm:text-lg font-heading font-bold truncate text-[var(--color-ink)]">{nf(cenarioUnica.transacoes)}</p>
-                  <span className="text-xs text-[var(--color-mute)] truncate block">
-                    {pf(cenarioUnica.pctVolume)} do volume
+                  <span
+                    className="text-xs text-[var(--color-mute)] truncate block"
+                    title={
+                      cenarioUnica.parcelasSubsequentes > 0
+                        ? `${pf(cenarioUnica.pctVolume)} das novas compras (+${nf(cenarioUnica.parcelasSubsequentes)} parcelas em fluxo somando ${cf(cenarioUnica.receitaParcelasSubsequentes)})`
+                        : undefined
+                    }
+                  >
+                    {pf(cenarioUnica.pctVolume)} do volume{cenarioUnica.parcelasSubsequentes > 0 ? ` (+${nf(cenarioUnica.parcelasSubsequentes)} parc.)` : ""}
                   </span>
                 </div>
                 <div className="min-w-0">
@@ -213,8 +236,15 @@ export default async function SalesDashboardPage(props: PageProps) {
                   <p className="text-base sm:text-lg font-heading font-bold text-white !text-white truncate">
                     {nf(cenarioRecompra.transacoes)}
                   </p>
-                  <span className="text-xs text-[#C8D6CB] truncate block">
-                    {pf(cenarioRecompra.pctVolume)} do volume
+                  <span
+                    className="text-xs text-[#C8D6CB] truncate block"
+                    title={
+                      cenarioRecompra.parcelasSubsequentes > 0
+                        ? `${pf(cenarioRecompra.pctVolume)} das novas compras (+${nf(cenarioRecompra.parcelasSubsequentes)} parcelas em fluxo somando ${cf(cenarioRecompra.receitaParcelasSubsequentes)})`
+                        : undefined
+                    }
+                  >
+                    {pf(cenarioRecompra.pctVolume)} do volume{cenarioRecompra.parcelasSubsequentes > 0 ? ` (+${nf(cenarioRecompra.parcelasSubsequentes)} parc.)` : ""}
                   </span>
                 </div>
                 <div className="min-w-0">

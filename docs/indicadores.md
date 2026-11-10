@@ -26,19 +26,23 @@ Se uma conta mudar, este arquivo mente até ser corrigido junto.
 
 | Indicador | Conta |
 |---|---|
-| Ticket médio / mediana | Faturamento ÷ vendas; mediana do faturamento por venda |
+| Faturamento (oferta) | Soma de `preco_oferta` de todas as vendas aprovadas no período (inclui 100% das parcelas pagas no Parcelado Hotmart). Mostra vendas totais (contratos + parcelas de planos ativos). |
+| Ticket médio / mediana | Calculado sobre as decisões de compra / contratos novos (`vendasContratadas`). As parcelas subsequentes (mês 2 a 12) do Parcelado Hotmart são isoladas para não deprimir o ticket real das ofertas; a parcela média é exibida como informação complementar no card. |
 | Clientes únicos → "com recompra" | E-mails com ao menos uma venda de recompra no período |
 | Taxa de recompra | Clientes com recompra ÷ clientes únicos |
 | Faturamento por cliente | Faturamento ÷ clientes únicos do período (não é LTV) |
-| Cenário A "sem recompra" | Vendas com `is_recompra = false` |
-| Cenário B "recompra" | Vendas com `is_recompra = true` |
-| Participação da recompra | Líquido de B ÷ líquido total; B ÷ total de vendas |
+| Cenário A "sem recompra" | Volume e tickets calculados sobre as primeiras compras e novos contratos. A receita de parcelas subsequentes com origem em compra única soma no faturamento do cenário sem inflar o contador de novos clientes. |
+| Cenário B "recompra" | Volume e tickets calculados sobre as compras de recompra. A receita de parcelas subsequentes com origem em recompra soma no faturamento do cenário sem criar falsas transações avulsas. |
+| Participação da recompra | Líquido de B ÷ líquido total; B ÷ total de contratos |
 | Famílias | Agrupado por `products.family`, ordenado por líquido |
 
 **Recompra** = primeira compra de um produto por quem já tinha comprado **outro** produto
 em instante anterior. Parcelas, repetições do mesmo produto e compras simultâneas
 (mesmo `approved_at`) não contam. O campo é gravado pelo webhook, pelo import e por
 `scripts/recalc-customer-history.js`, todos com essa regra.
+
+**Isolamento de Parcelado Hotmart**:
+No modelo da Hotmart, cada parcela mensal do boleto parcelado gera uma transação. A 1ª parcela representa a adesão contratual. As parcelas de meses 2 a 12 são identificadas como parcelas ativas de quitação (`is_subsequent_installment = true`), somando 100% de seu fluxo de caixa na receita sem diluir o ticket de entrada nem gerar falsas contagens de novos compradores. A identidade contábil `cenarioUnica.receitaBruta + cenarioRecompra.receitaBruta === synthesis.faturamentoBruto` é 100% preservada ao centavo.
 
 ## Financeiro (`/financeiro`)
 
